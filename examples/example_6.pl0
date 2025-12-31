@@ -1,0 +1,20 @@
+// Emulating a hypothetical pl0_7 feature using pl0_6 primitives
+// Example: ad-hoc polymorphism via dictionary passing
+
+// --- pl0_6 new: static typing ---
+type Point = {x: int, y: int}
+origin : Point = {x: 0, y: 0}
+id_int : (int) -> int = (x: int) -> x
+
+// "Semiring" dictionary for int
+type Semiring = {zero: int, add: (int, int) -> int, mul: (int, int) -> int}
+
+int_semiring : Semiring =
+  {zero: 0, add: (a: int, b: int) -> a + b, mul: (a: int, b: int) -> a * b}
+
+// Generic sum-of-products over a fixed triple (a,b,c) using a dictionary
+sum_prod : (Semiring, int, int, int) -> int =
+  (s: Semiring, a: int, b: int, c: int) ->
+    s.add (s.mul (a, b), s.mul (b, c))
+
+result : int = sum_prod (int_semiring, 2, 3, 4)  // 6 + 12 = 18

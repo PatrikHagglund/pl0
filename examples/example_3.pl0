@@ -1,0 +1,67 @@
+// Emulating pl0_4 features using only pl0_3 primitives
+// pl0_3 has: integers, booleans, callables, case expressions
+
+// --- pl0_3 new: booleans, callables, case expressions ---
+is_even :
+is_even := (x) -> case {
+  x % 2 == 0 -> true,
+  true       -> false
+}
+
+flag := is_even 4  // true
+
+// --- Arrays as functions (index -> value) ---
+arr :
+arr := (i) -> case {
+  i == 0 -> 10,
+  i == 1 -> 20,
+  i == 2 -> 30,
+  true   -> -1
+}
+
+v0 := arr 0  // 10
+v2 := arr 2  // 30
+
+// "Update" array by wrapping with a new function
+arr2 :
+arr2 := (i) -> case {
+  i == 1 -> 99,
+  true   -> arr i
+}
+v1 := arr2 1  // 99
+
+// --- Length + bounds check ---
+len := 3
+safe_get :
+safe_get := (i) -> case {
+  i < 0      -> -1,
+  i >= len   -> -1,
+  true       -> arr i
+}
+
+// --- Pattern matching on lists via tagged functions ---
+// Encode list node as function:
+// sel == 0 => tag (0 = nil, 1 = cons)
+// sel == 1 => head
+// sel == 2 => tail (another function)
+nil :
+nil := (sel) -> 0
+
+cons :
+cons := (h, t) -> (sel) -> case {
+  sel == 0 -> 1,
+  sel == 1 -> h,
+  sel == 2 -> t,
+  true     -> 0
+}
+
+list :
+list := cons (1, cons (2, cons (3, nil)))
+
+sum :
+sum := (lst) -> case {
+  lst 0 == 0 -> 0,
+  true       -> (lst 1) + (sum (lst 2))
+}
+
+result := sum list  // 6

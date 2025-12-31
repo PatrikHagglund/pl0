@@ -1,0 +1,99 @@
+// Minimal PL/0 interpreter for pl0_0.peg
+module pl0peg0
+
+import src/peg
+import std/os/file
+import std/os/path
+import std/os/env
+
+alias env = list<(string, int)>
+
+fun env-get(e: env, k: string): int
+  e.filter(fn(p) tuple2/fst(p) == k).head.map(tuple2/snd).default(0)
+
+fun env-set(e: env, k: string, v: int): env
+  Cons((k, v), e.filter(fn(p) tuple2/fst(p) != k))
+
+type semval
+  SVExpr(f: (env) -> div int)
+  SVStmt(f: (env) -> <div,console> env)
+  SVIdent(s: string)
+  SVOp(op: string)
+  SVList(vs: list<semval>)
+
+fun flatten(vs: list<semval>): list<semval>
+  fun f(c: semval): list<semval>
+    match c { SVList(inner) -> inner; _ -> [c] }
+  vs.flatmap(f).flatmap(f).flatmap(f)
+
+fun default-action(name: string, txt: string, children: list<semval>): semval
+  if name == "_lit" && (txt.trim == "+" || txt.trim == "-")
+  then SVOp(txt.trim)
+  else match children { Cons(c, Nil) -> c; _ -> SVList(children) }
+
+fun act-int-lit(name: string, txt: string, children: list<semval>): semval
+  SVExpr(fn(_) txt.trim.parse-int.default(0))
+
+fun act-ident(name: string, txt: string, children: list<semval>): semval
+  SVIdent(txt.list.take-while(fn(c) c.is-alpha || c.is-digit).string)
+
+fun act-term(name: string, txt: string, children: list<semval>): semval
+  match flatten(children).filter(fn(c) match c { SVExpr(_) -> True; SVIdent(_) -> True; _ -> False }).head
+    Just(SVExpr(f)) -> SVExpr(f)
+    Just(SVIdent(id)) -> SVExpr(fn(e) env-get(e, id))
+    _ -> SVExpr(fn(_) 0)
+
+fun act-expression(name: string, txt: string, children: list<semval>): semval
+  val cs = flatten(children)
+  val exprs = cs.filter-map(fn(c) match c { SVExpr(f) -> Just(f); _ -> Nothing })
+  val ops = cs.filter-map(fn(c) match c { SVOp(o) -> Just(o); _ -> Nothing })
+  match exprs
+    Cons(first, rest) -> SVExpr fn(e)
+      zip(rest, ops).foldl(first(e)) fn(acc, p)
+        if tuple2/snd(p) == "-" then acc - tuple2/fst(p)(e) else acc + tuple2/fst(p)(e)
+    _ -> SVExpr(fn(_) 0)
+
+fun act-binding(name: string, txt: string, children: list<semval>): semval
+  val cs = flatten(children)
+  val id = cs.filter-map(fn(c) match c { SVIdent(s) -> Just(s); _ -> Nothing }).head.default("")
+  val f = cs.filter-map(fn(c) match c { SVExpr(f) -> Just(f); _ -> Nothing }).head.default(fn(_) 0)
+  SVStmt(fn(e) env-set(e, id, f(e)))
+
+fun act-print(name: string, txt: string, children: list<semval>): semval
+  val f = flatten(children).filter-map(fn(c) match c { SVExpr(f) -> Just(f); _ -> Nothing }).head.default(fn(_) 0)
+  SVStmt(fn(e) { println(f(e).show); e })
+
+fun act-statement(name: string, txt: string, children: list<semval>): semval
+  flatten(children).filter(fn(c) match c { SVStmt(_) -> True; _ -> False }).head.default(SVStmt(fn(e) e))
+
+val actions: actions<semval> = [
+  ("int_lit", act-int-lit), ("ident", act-ident), ("term", act-term),
+  ("expression", act-expression), ("binding", act-binding),
+  ("print_stmt", act-print), ("statement", act-statement)]
+
+pub fun main()
+  val prog-path = get-args().head.default("../examples/example_0.pl0")
+  val grammar = parse-peg(read-text-file("src/pl0_0.peg".path))
+  val prog = read-text-file(prog-path.path)
+
+  var input := prog.slice
+  var e: env := []
+
+  match peg-exec-partial(grammar, actions, default-action, "_", input)
+    Just((rest, _)) -> input := rest
+    Nothing -> ()
+
+  while { !input.is-empty }
+    match peg-exec-partial(grammar, actions, default-action, "statement", input)
+      Just((rest, sv)) ->
+        match sv { SVStmt(f) -> e := f(e); _ -> () }
+        val rest2 = match peg-exec-partial(grammar, actions, default-action, "_", rest)
+          Just((r, _)) -> r
+          Nothing -> rest
+        input := rest2
+      Nothing ->
+        if !input.is-empty then println("Parse error: " ++ input.string.first(20).string)
+        input := "".slice
+
+  println("\nEnvironment:")
+  e.reverse.foreach(fn(p) println("  " ++ tuple2/fst(p) ++ " = " ++ tuple2/snd(p).show))

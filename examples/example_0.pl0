@@ -1,0 +1,15 @@
+// Demonstrating pl0_0 (sequential computation, + - only)
+a := 3
+b := 4
+sum := a + b
+diff := b - a
+
+print sum       // 7
+print diff      // 1
+
+// Unrolled computation (no loops)
+f := 1
+f := f + f      // 2
+f := f + f      // 4
+f := f + f      // 8
+print f         // 8

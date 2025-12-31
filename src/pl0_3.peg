@@ -1,0 +1,68 @@
+// PL/0 Grammar (PEG variant)
+//
+// Three types with their algebraic operations:
+//   ℤ (integers)  — Euclidean domain: + - * / %
+//   𝔹 (booleans)  — Boolean algebra: && || !
+//   () → T (callables) — application via juxtaposition
+//
+// Type bridge: relational operators ℤ × ℤ → 𝔹
+
+// Program structure
+program         = _ top_level_stmt*
+top_level_stmt  = binding / expression
+
+// Statements
+statement       = control / print_stmt / top_level_stmt
+control         = case_stmt / loop_stmt / "break" _
+block           = "{" _ (statement ";"? _)* expression? "}" _
+case_stmt       = "case" _ "{" _ stmt_arm+ "}" _
+stmt_arm        = or_expr "->" _ statement
+loop_stmt       = "loop" _ statement
+print_stmt      = "print" _ expression
+
+// Bindings
+binding         = ident _ ":" ("=" _ expression)?
+                / lvalue _ ":=" _ expression
+lvalue          = ident (__ atom)+
+
+// Unified expression grammar
+expression      = or_expr
+case_expr       = "case" _ "{" _ expr_arm+ "}" _
+expr_arm        = or_expr "->" _ or_expr ("," _)?
+
+// 𝔹 operations
+or_expr         = and_expr ("||" _ and_expr)*
+and_expr        = not_expr ("&&" _ not_expr)*
+not_expr        = ("!" _)? cmp_expr
+
+// Type bridge
+cmp_expr        = sum_expr (relop sum_expr)?
+relop           = ("==" / "!=" / "<=" / ">=" / "<" / ">") _
+
+// ℤ operations
+sum_expr        = product (("+" / "-") _ product)*
+product         = unary (("*" / "/" / "%") _ unary)*
+unary           = "-"? apply_expr
+
+// Application via juxtaposition: f x, arr i
+apply_expr      = atom (__ atom)*
+atom            = literal / ident / "(" _ expression ")" _ / block / case_expr
+
+// Literals
+literal         = int_lit / bool_lit / func_lit
+int_lit         = digit+ _
+bool_lit        = ("true" / "false") !alnum _
+func_lit        = "(" _ params? ")" _ "->" _ expression
+params          = ident ("," _ ident)* ("," _)?
+
+// Lexical elements
+keyword         = ("case" / "loop" / "break" / "true" / "false" / "print") !alnum
+ident           = !keyword letter alnum* _
+alnum           = [a-zA-Z0-9]
+letter          = [a-zA-Z]
+digit           = [0-9]
+
+// Whitespace and comments
+_               = ([ \t\n\r] / comment)*
+__              = [ \t]+                    // required horizontal space for juxtaposition
+comment         = "//" [^\n]* / "/*" (!"*/" .)* "*/"

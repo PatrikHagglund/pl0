@@ -1,0 +1,68 @@
+(* PL/0 Grammar
+ * 
+ * Type system: Two types — integers (ℤ) and booleans (𝔹)
+ * 
+ * Algebraic structure on integers: Euclidean domain
+ * - (ℤ, +, ×) forms a commutative ring with unity
+ * - Division (/) and modulo (%) provide Euclidean division: a = b × (a/b) + (a%b)
+ * - Enables: GCD via Euclidean algorithm, Bézout's identity, unique factorization
+ * - Unary "-" is the additive inverse
+ * 
+ * Algebraic structure on booleans: Boolean algebra
+ * - (𝔹, ||, &&, !) forms a complemented distributive lattice
+ * - Satisfies De Morgan's laws: !(a && b) == !a || !b
+ * - Unary "!" is the complement operation
+ * 
+ * Type bridge: Relational operators are predicates ℤ × ℤ → 𝔹
+ * - int_expr: ℤ
+ * - logic_expr: 𝔹
+ * - &&, ||, ! require 𝔹 operands
+ * - +, -, *, /, % require ℤ operands
+ *)
+
+(* Program structure *)
+program         ::= { top_level_stmt } ;
+top_level_stmt  ::= declaration | assignment | block ;
+
+(* Statements *)
+statement       ::= declaration | assignment | func_call | if_stmt | loop_stmt | "break" | block ;
+block           ::= "{" { statement [";"] } "}" ;
+if_stmt         ::= "if" logic_expr statement ;
+loop_stmt       ::= "loop" statement ;
+
+(* Declarations and assignments *)
+declaration     ::= ident ":" [ lambda_expr ] ;
+assignment      ::= ident ":=" expression ;
+
+(* Functions *)
+lambda_expr     ::= "(" ")" "=" statement ;
+func_call       ::= ident "(" ")" ;
+
+(* Expressions *)
+expression      ::= int_expr | logic_expr | lambda_expr ;
+
+(* Integer expressions: Euclidean domain *)
+int_expr        ::= int_sum ;
+int_sum         ::= int_product { ("+" | "-") int_product } ;
+int_product     ::= int_factor { ("*" | "/" | "%") int_factor } ;
+int_factor      ::= int_ident | int_literal | "(" int_expr ")" | "-" int_factor ;
+int_ident       ::= ident ;
+int_literal     ::= digit { digit } ;
+
+(* Logical expressions: Boolean algebra *)
+logic_expr      ::= logic_or ;
+logic_or        ::= logic_and { "||" logic_and } ;
+logic_and       ::= logic_not { "&&" logic_not } ;
+logic_not       ::= [ "!" ] logic_atom ;
+logic_atom      ::= logic_ident | logic_literal | "(" logic_expr ")" | relation ;
+logic_ident     ::= ident ;
+logic_literal   ::= "0" | "1" ;
+
+(* Type bridge: ℤ × ℤ → 𝔹 *)
+relation        ::= int_expr relop int_expr ;
+relop           ::= "==" | "<" | ">" ;
+
+(* Lexical elements *)
+ident           ::= letter { letter | digit } ;
+letter          ::= "a" | ... | "z" | "A" | ... | "Z" ;
+digit           ::= "0" | ... | "9" ;

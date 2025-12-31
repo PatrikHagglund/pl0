@@ -1,0 +1,39 @@
+module pl01-eval
+
+import src/pl01-types
+
+// Effect for break
+pub effect loop-break
+  ctl do-break(): a
+
+// Evaluator
+pub fun eval(e: env, ex: expr): int
+  match ex
+    EInt(n) -> n
+    EVar(x) -> env-get(e, x)
+    EAdd(l, r) -> eval(e, l) + eval(e, r)
+    ESub(l, r) -> eval(e, l) - eval(e, r)
+    ENeg(x) -> 0 - eval(e, x)
+
+pub fun exec(e: env, s: stmt): <console, loop-break, div> env
+  match s
+    SDecl(x) -> env-set(e, x, 0)
+    SAssign(x, ex) -> env-set(e, x, eval(e, ex))
+    SBlock(ss) -> exec-all(e, ss)
+    SLoop(body) -> exec-loop(e, body)
+    SBreakIfz(cond) -> 
+      if eval(e, cond) == 0 then do-break()
+      e
+    SPrint(ex) ->
+      println(eval(e, ex).show)
+      e
+
+pub fun exec-all(e: env, ss: list<stmt>): <console, loop-break, div> env
+  match ss
+    Nil -> e
+    Cons(s, rest) -> exec-all(exec(e, s), rest)
+
+pub fun exec-loop(e: env, body: stmt): <console, loop-break, div> env
+  with ctl do-break() e
+  val e1 = exec(e, body)
+  exec-loop(e1, body)

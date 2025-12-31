@@ -1,0 +1,183 @@
+// Emulating pl0_2 features using only pl0_1 primitives
+// pl0_1 has: integers, +, -, loop, break_ifz, variables
+// break_ifz expr: breaks if expr evaluates to 0
+
+// Helper pattern: Invert a value (boolean context)
+// is_zero := 1
+// loop {
+//   break_ifz n
+//   is_zero := 0
+//   break_ifz 0
+// }
+// Result: is_zero is 1 if n==0, 0 if n!=0.
+
+// Helper pattern: "if (bool) then action"
+// loop {
+//   break_ifz bool  // continue if 1, break if 0
+//   action
+//   break_ifz 0
+// }
+
+// --- pl0_1 core: loop/break_ifz/variables ---
+counter := 3
+sum := 0
+loop {
+  break_ifz counter
+  sum := sum + counter
+  counter := counter - 1
+}
+// sum == 6
+print sum
+
+// --- Unconditional break ---
+// pl0_2: break
+// pl0_1: break_ifz 0
+loop {
+  x := 42
+  break_ifz 0
+}
+
+// --- case statement ---
+// pl0_2: case { cond1 -> stmt1, cond2 -> stmt2 }
+// pl0_1: set default, then override with if-pattern
+n := 2
+r := 2  // default
+loop {
+  // Case n == 0
+  is_zero := 1
+  loop {
+    break_ifz n
+    is_zero := 0
+    break_ifz 0
+  }
+  
+  loop {
+     break_ifz is_zero
+     r := 0
+     break_ifz 0
+  }
+
+  // Case n == 1
+  m := n - 1
+  is_one := 1
+  loop {
+    break_ifz m
+    is_one := 0
+    break_ifz 0
+  }
+  
+  loop {
+     break_ifz is_one
+     r := 1
+     break_ifz 0
+  }
+  
+  break_ifz 0
+}
+
+// --- Comparison: a != b ---
+// pl0_1: use arithmetic and control flow
+a := 3
+b := 4
+// Calculate neq = (a != b)
+neq := 0
+loop {
+  break_ifz a - b
+  neq := 1
+  break_ifz 0
+}
+eq := 1 - neq
+
+// --- Comparison: a < b ---
+// Emulate via parallel countdown (a,b >= 0)
+lt := 0
+d1 := a
+d2 := b
+loop {
+  break_ifz d1
+  break_ifz d2
+  d1 := d1 - 1
+  d2 := d2 - 1
+}
+
+// Logic:
+// If d1 == 0 and d2 != 0, then a < b.
+// If d1 == 0 and d2 == 0, then a == b (not less).
+// If d1 != 0 (implies d2 == 0), then a > b (not less).
+
+// Check d1 == 0
+d1_zero := 1
+loop {
+  break_ifz d1
+  d1_zero := 0
+  break_ifz 0
+}
+
+loop {
+  break_ifz d1_zero // proceed if d1 == 0
+  
+  // Check d2 != 0
+  loop {
+    break_ifz d2
+    lt := 1
+    break_ifz 0
+  }
+  break_ifz 0
+}
+
+// --- Multiplication: a * b ---
+// pl0_2: a * b
+// pl0_1: repeated addition
+result := 0
+loop {
+  break_ifz b
+  result := result + a
+  b := b - 1
+}
+// result == 12
+print result
+
+// --- Division: a / b (integer) ---
+// Uses less-than via parallel countdown
+dividend := 17
+divisor := 5
+quotient := 0
+loop {
+  // Check if dividend < divisor
+  d1 := dividend
+  d2 := divisor
+  loop {
+    break_ifz d1
+    break_ifz d2
+    d1 := d1 - 1
+    d2 := d2 - 1
+  }
+  
+  // less = (d1==0 AND d2!=0)
+  less := 0
+  d1_zero := 1
+  loop {
+    break_ifz d1
+    d1_zero := 0
+    break_ifz 0
+  }
+  
+  loop {
+     break_ifz d1_zero // if d1 == 0
+     loop {
+        break_ifz d2 // if d2 != 0
+        less := 1
+        break_ifz 0
+     }
+     break_ifz 0
+  }
+  
+  // if less == 1 (true) break outer loop
+  break_ifz 1 - less
+  
+  dividend := dividend - divisor
+  quotient := quotient + 1
+}
+// quotient == 3, dividend == 2 (remainder)
+print quotient
+print dividend

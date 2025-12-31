@@ -1,0 +1,8 @@
+x := 3
+y := 4
+result := 0
+loop {
+  break_if y == 0
+  result := result + x
+  y := y - 1
+}

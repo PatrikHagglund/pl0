@@ -1,0 +1,13 @@
+pl0_parser
+pl0_1
+pl0_1_llvm
+out
+out.ll
+out-O0
+.image
+*~
+\#*#
+.koka/
+src/.koka/
+src/pl01
+src/pl0peg1

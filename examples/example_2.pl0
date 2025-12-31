@@ -1,0 +1,60 @@
+// Emulating pl0_3 features using only pl0_2 primitives
+// pl0_2 has: integers, arithmetic/comparison, case statements, blocks, break
+
+// --- pl0_2 control flow: case, blocks, break ---
+n := 3
+acc := 0
+loop {
+  case {
+    n == 0 -> break
+    1 -> {
+      acc := acc + n
+      n := n - 1
+    }
+  }
+}
+// acc == 6
+
+// --- Booleans as integers (0=false, 1=true) ---
+bool_a := 1
+bool_b := 0
+
+// not b
+not_b :
+case {
+  bool_b == 0 -> not_b := 1
+  1 -> not_b := 0
+}
+
+// and / or using arithmetic on 0/1
+and_ab := bool_a * bool_b
+or_ab := bool_a + bool_b
+case {
+  or_ab == 0 -> or_ab := 0
+  1 -> or_ab := 1
+}
+
+// --- Case expression emulation (pl0_3 case expr) ---
+// pl0_3: result := case { cond -> expr, true -> expr }
+// pl0_2: use case statement to assign
+x := 7
+y := 9
+max :
+case {
+  x < y -> max := y
+  1 -> max := x
+}
+
+// --- Callable emulation via tagged dispatch ---
+// pl0_2: callables with parameters and return value
+// pl0_1: use tag + global args + case dispatch
+call_tag := 0
+arg0 := 6
+arg1 := 7
+ret :
+case {
+  call_tag == 0 -> ret := arg0 + arg1   // "add"
+  call_tag == 1 -> ret := arg0 - arg1   // "sub"
+  1 -> ret := 0
+}
+// ret == 13 when call_tag == 0

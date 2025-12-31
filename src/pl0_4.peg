@@ -1,0 +1,93 @@
+// PL/0 Grammar (PEG variant)
+//
+// Four types with their algebraic operations:
+//   ℤ (integers)   — Euclidean domain: + - * / %
+//   𝔹 (booleans)   — Boolean algebra: && || !
+//   [T] (arrays)   — application via juxtaposition or dot
+//   () → T (funcs) — application via juxtaposition
+//
+// Access:
+//   f x       — evaluated (juxtaposition)
+//   arr.0     — literal index (dot)
+//
+// Type bridge: relational operators ℤ × ℤ → 𝔹
+
+// Program structure
+program         = _ top_level_stmt*
+
+// Statements
+top_level_stmt  = binding / expression
+statement       = control / print_stmt / top_level_stmt
+
+// Control flow
+control         = case_stmt / loop_stmt / "break" _
+case_stmt       = "case" _ or_expr? "{" _ stmt_arm+ "}" _
+stmt_arm        = pattern "->" _ statement
+loop_stmt       = "loop" _ statement
+print_stmt      = "print" _ expression
+
+// Blocks
+block           = "{" _ (statement ";"? _)* expression? "}" _
+
+// Bindings
+binding         = ident _ ":" ("=" _ expression)?
+                / lvalue _ ":=" _ expression
+lvalue          = ident accessor+
+accessor        = __ atom / "." _ (int_lit / ident)
+
+// Unified expression grammar
+expression      = or_expr
+case_expr       = "case" _ or_expr? "{" _ expr_arm+ "}" _
+expr_arm        = pattern "->" _ or_expr ("," _)?
+
+// 𝔹 operations
+or_expr         = and_expr ("||" _ and_expr)*
+and_expr        = not_expr ("&&" _ not_expr)*
+not_expr        = ("!" _)? cmp_expr
+
+// Type bridge
+cmp_expr        = sum_expr (relop sum_expr)?
+relop           = ("==" / "!=" / "<=" / ">=" / "<" / ">") _
+
+// ℤ operations
+sum_expr        = product (("+" / "-") _ product)*
+product         = unary (("*" / "/" / "%") _ unary)*
+unary           = "-"? apply_expr
+
+// Application: juxtaposition or dot
+apply_expr      = atom (__ atom / "." _ (int_lit / ident))*
+tuple_items     = expression ("," _ expression)* ("," _)?
+array_items     = (expression ";" _)+
+
+atom            = literal / ident / paren_expr / block / case_expr
+
+paren_expr      = "(" _ (array_items / tuple_items)? _ ")" _
+
+// Literals
+literal         = int_lit / bool_lit / func_lit
+int_lit         = digit+ _
+bool_lit        = ("true" / "false") !alnum _
+func_lit        = "(" _ params? ")" _ "->" _ expression
+params          = ident ("," _ ident)* ("," _)?
+
+// Lexical elements
+keyword         = ("case" / "loop" / "break" / "true" / "false" / "print") !alnum
+ident           = !keyword letter alnum* _
+wildcard        = "_" !alnum _
+alnum           = [a-zA-Z0-9]
+letter          = [a-zA-Z]
+digit           = [0-9]
+
+// Patterns
+pattern         = wildcard
+                / paren_pat
+                / literal
+                / ident
+
+paren_pat       = "(" _ (array_pat_items / pattern)? _ ")" _
+array_pat_items = (pattern ";" _)+
+
+// Whitespace and comments
+_               = ([ \t\n\r] / comment)*
+__              = [ \t]+
+comment         = "//" [^\n]* / "/*" (!"*/" .)* "*/"

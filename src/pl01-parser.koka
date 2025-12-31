@@ -1,0 +1,90 @@
+module pl01-parser
+
+import std/text/parse
+import src/pl01-types
+
+// Parser
+fun pws(): parse ()
+  many({ one-of(" \t\n"); () })
+  ()
+
+fun pident(): parse string
+  val c = alpha()
+  val cs = many({ alpha-num() })
+  c.string ++ cs.string
+
+fun pexpr(): <parse, div> expr
+  psum()
+
+fun psum(): <parse, div> expr
+  val a = patom()
+  psum-rest(a)
+
+fun psum-rest(acc: expr): <parse, div> expr
+  optional(acc)
+    pws()
+    val op = one-of("+-")
+    pws()
+    val b = patom()
+    val e = if op == '+' then EAdd(acc, b) else ESub(acc, b)
+    psum-rest(e)
+
+fun patom(): <parse, div> expr
+  pws()
+  choose([
+    { EInt(pnat()) },
+    { char('('); pws(); val e = pexpr(); pws(); char(')'); e },
+    { char('-'); pws(); ENeg(patom()) },
+    { EVar(pident()) }
+  ])
+
+fun pstmt(): <parse, div> stmt
+  pws()
+  val s = choose([
+    { pblock() },
+    { ploop() },
+    { pbreakif() },
+    { pprint() },
+    { pbinding() }
+  ])
+  pws()
+  optional(()) { char(';'); () }
+  s
+
+fun pblock(): <parse, div> stmt
+  char('{')
+  pws()
+  val ss = pstmts()
+  char('}')
+  SBlock(ss)
+
+fun pstmts(): <parse, div> list<stmt>
+  optional([])
+    val s = pstmt()
+    pws()
+    optional(()) { char(';'); () }
+    pws()
+    Cons(s, pstmts())
+
+fun ploop(): <parse, div> stmt
+  pstring("loop"); pws()
+  SLoop(pstmt())
+
+fun pbreakif(): <parse, div> stmt
+  pstring("break_ifz"); pws()
+  SBreakIfz(pexpr())
+
+fun pprint(): <parse, div> stmt
+  pstring("print"); pws()
+  SPrint(pexpr())
+
+fun pbinding(): <parse, div> stmt
+  val id = pident()
+  pws(); char(':')
+  optional(SDecl(id))
+    char('='); pws()
+    SAssign(id, pexpr())
+
+pub fun pprogram(): <parse, div> list<stmt>
+  pws()
+  many(pstmt)

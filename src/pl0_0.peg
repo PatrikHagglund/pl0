@@ -1,0 +1,20 @@
+// PL/0 Base Grammar - Sequential only (NOT Turing-complete)
+//
+// Has 2 of 3 Minsky machine features:
+//   1. Increment/decrement - + and - operations
+//   2. Variables - unbounded integer storage (counters)
+//   MISSING: Conditional control flow (no loop, no zero-test)
+//
+// Action tags (@tag) map rules to semantic actions.
+program    = _ statement*
+statement  = binding / print_stmt  @statement
+binding    = ident _ ":=" _ expression  @binding
+print_stmt = "print" _ expression  @print_stmt
+expression = term (("+" / "-") _ term)*  @expression
+term       = int_lit / ident  @term
+int_lit    = digit+ _  @int_lit
+ident      = letter alnum* _  @ident
+alnum      = [a-zA-Z0-9]
+letter     = [a-zA-Z]
+digit      = [0-9]
+_          = ([ \t\n\r] / "//" [^\n]*)*

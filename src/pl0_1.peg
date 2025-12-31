@@ -1,0 +1,41 @@
+// PL/0 Minimal Grammar (PEG variant)
+//
+// Turing-complete via Minsky machine (counter machine) features:
+//   1. Increment/decrement - + and - operations
+//   2. Variables - unbounded integer storage (counters)
+//   3. Conditional control flow - loop + break_ifz (zero-test)
+//
+// Action tags (@tag) map rules to semantic actions.
+// Without a tag, the rule name is used for action lookup.
+
+// Program structure
+program         = _ statement*
+statement       = binding / loop_stmt / break_stmt / print_stmt / block  @statement
+
+block           = "{" _ (statement ";"? _)* "}" _  @block
+loop_stmt       = "loop" _ statement  @loop_stmt
+break_stmt      = "break_ifz" _ expression  @break_stmt
+print_stmt      = "print" _ expression  @print_stmt
+
+// Bindings (tag must be at end of entire rule, after all alternatives)
+binding         = ident _ ":=" _ expression
+                / ident _ ":"  @binding
+
+// Expressions
+expression      = sum_expr  @expression
+sum_expr        = unary (("+" / "-") _ unary)*  @sum_expr
+unary           = "-"? atom  @unary
+atom            = int_lit / ident / "(" _ expression ")" _  @atom
+
+int_lit         = digit+ _  @int_lit
+
+// Lexical elements
+keyword         = ("loop" / "break_ifz" / "print") !alnum
+ident           = !keyword letter alnum* _  @ident
+alnum           = [a-zA-Z0-9]
+letter          = [a-zA-Z]
+digit           = [0-9]
+
+// Whitespace and comments
+_               = ([ \t\n\r] / comment)*
+comment         = "//" [^\n]* / "/*" (!"*/" .)* "*/"

@@ -1,0 +1,33 @@
+// Repeated factorial benchmark
+// Usage: ./out <iterations> <n>
+// Computes n! iterations times, sums results
+
+iterations := arg1
+facn := arg2
+sum := 0
+
+loop {
+  break_ifz iterations
+  
+  n := facn
+  result := 1
+  loop {
+    break_ifz n
+    
+    product := 0
+    count := n
+    loop {
+      break_ifz count
+      product := product + result
+      count := count - 1
+    }
+    
+    result := product
+    n := n - 1
+  }
+  
+  sum := sum + result
+  iterations := iterations - 1
+}
+
+print sum

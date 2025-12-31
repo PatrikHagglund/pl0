@@ -1,0 +1,15 @@
+(* PL/0 Minimal Grammar — matches pl_0_parser_non_oop.cpp *)
+
+program     ::= statement ;
+statement   ::= assignment | block ;
+block       ::= "{" { statement [";"] } "}" ;
+assignment  ::= ident ":=" expression ;
+
+expression  ::= term { ("+" | "-") term } ;
+term        ::= factor { ("*" | "/" | "%") factor } ;
+factor      ::= number | ident | "(" expression ")" ;
+
+ident       ::= letter { letter | digit } ;
+number      ::= digit { digit } ;
+letter      ::= "a" | ... | "z" | "A" | ... | "Z" ;
+digit       ::= "0" | ... | "9" ;

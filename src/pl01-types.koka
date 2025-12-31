@@ -1,0 +1,27 @@
+module pl01-types
+
+pub type expr
+  EInt(n: int)
+  EVar(name: string)
+  EAdd(l: expr, r: expr)
+  ESub(l: expr, r: expr)
+  ENeg(e: expr)
+
+pub type stmt
+  SDecl(name: string)
+  SAssign(name: string, e: expr)
+  SBlock(stmts: list<stmt>)
+  SLoop(body: stmt)
+  SBreakIfz(cond: expr)
+  SPrint(e: expr)
+
+// Environment
+pub alias env = list<(string, int)>
+
+pub fun env-get(e: env, key: string): int
+  match e.filter(fn(p) p.fst == key)
+    Cons((_, v), _) -> v
+    Nil -> 0
+
+pub fun env-set(e: env, key: string, v: int): env
+  Cons((key, v), e.filter(fn(p) p.fst != key))

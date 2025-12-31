@@ -1,0 +1,42 @@
+// PL/0 Simplified Grammar (PEG variant)
+//
+// Integer-only, no callables, no case expression
+
+// Program structure
+program         = _ top_level_stmt*
+top_level_stmt  = binding / block / expression
+
+// Statements
+statement       = control / print_stmt / top_level_stmt
+control         = case_stmt / loop_stmt / "break" _
+block           = "{" _ (statement ";"? _)* "}" _
+case_stmt       = "case" _ "{" _ stmt_arm+ "}" _
+stmt_arm        = expression "->" _ statement
+loop_stmt       = "loop" _ statement
+print_stmt      = "print" _ expression
+
+// Bindings
+binding         = ident _ ":=" _ expression
+                / ident _ ":"
+
+// Expressions — standard precedence
+expression      = cmp_expr
+cmp_expr        = sum_expr (relop sum_expr)?
+sum_expr        = product (("+" / "-") _ product)*
+product         = unary (("*" / "/" / "%") _ unary)*
+unary           = "-"? atom
+atom            = int_lit / ident / "(" _ expression ")" _
+
+relop           = ("==" / "!=" / "<=" / ">=" / "<" / ">") _
+int_lit         = digit+ _
+
+// Lexical elements
+keyword         = ("case" / "loop" / "break" / "print") !alnum
+ident           = !keyword letter alnum* _
+alnum           = [a-zA-Z0-9]
+letter          = [a-zA-Z]
+digit           = [0-9]
+
+// Whitespace and comments
+_               = ([ \t\n\r] / comment)*
+comment         = "//" [^\n]* / "/*" (!"*/" .)* "*/"

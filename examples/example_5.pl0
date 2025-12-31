@@ -1,0 +1,46 @@
+// Emulating pl0_6 static typing using only pl0_5 primitives
+// pl0_5 has: records, unit, arrays, pattern matching
+
+// --- pl0_5 new: records and unit ---
+origin0 := {x: 0, y: 0}
+nothing := ()
+get_x0 :
+get_x0 := (p) -> case p {
+  {x: xv, y: _} -> xv,
+  _             -> 0
+}
+ox0 := get_x0 origin0
+
+// --- Tagged values simulate types ---
+make_int :
+make_int := (n) -> {tag: 0, val: n}
+
+make_bool :
+make_bool := (b) -> {tag: 1, val: b}
+
+expect_int :
+expect_int := (v) -> case v {
+  {tag: 0, val: n} -> n,
+  _               -> 0
+}
+
+// --- "Typed" addition ---
+add_int :
+add_int := (a, b) -> make_int ((expect_int a) + (expect_int b))
+
+x := make_int 10
+y := make_int 20
+z := add_int (x, y)  // {tag:0, val:30}
+
+// --- Typed record with field checks ---
+make_point :
+make_point := (xv, yv) -> {tag: 2, x: xv, y: yv}
+
+get_x :
+get_x := (p) -> case p {
+  {tag: 2, x: xv, y: _} -> xv,
+  _                    -> make_int 0
+}
+
+origin := make_point (make_int 0, make_int 0)
+origin_x := get_x origin

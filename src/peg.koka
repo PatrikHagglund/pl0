@@ -1,0 +1,536 @@
+// Minimal PEG interpreter in Koka
+// Reads a .peg grammar file and interprets input against it
+
+module peg
+
+import std/text/parse
+import std/os/file
+import std/os/path
+
+// === PEG AST ===
+pub type peg
+  PSeq(ps: list<peg>)
+  PChoice(ps: list<peg>)
+  PStar(p: peg)
+  PPlus(p: peg)
+  POpt(p: peg)
+  PNot(p: peg)
+  PAnd(p: peg)
+  PLit(s: string)
+  PClass(ranges: list<(char,char)>, negated: bool)
+  PRule(name: string)
+  PAny
+
+// Rule with optional action tag: (name, body, maybe<tag>)
+pub alias rule = (string, peg, maybe<string>)
+pub alias grammar = list<rule>
+
+// === Parse Result Tree ===
+pub type ptree
+  PNode(rule: string, children: list<ptree>, text: string)
+  PLeaf(text: string)
+
+// === PEG File Parser ===
+fun peg-ws(): parse ()
+  many { one-of(" \t") }
+  ()
+
+fun peg-ws-nl(): parse ()
+  many { one-of(" \t\n\r") }
+  ()
+
+fun peg-comment(): parse ()
+  pstring("//")
+  many { none-of("\n") }
+  ()
+
+fun peg-skip(): parse ()
+  many { choose([{ one-of(" \t\n\r"); () }, { peg-comment() }]) }
+  ()
+
+fun peg-ident(): parse string
+  val c = choose([alpha, { char('_') }])
+  val cs = many { choose([alpha-num, { char('_') }]) }
+  (Cons(c, cs)).string
+
+fun peg-char-esc(): parse char
+  char('\\')
+  val c = none-of("")
+  match c
+    'n' -> '\n'
+    'r' -> '\r'
+    't' -> '\t'
+    _ -> c
+
+fun peg-char-lit(): parse char
+  choose([peg-char-esc, { none-of("") }])
+
+fun peg-string-lit(): parse peg
+  char('"')
+  val cs = many { choose([peg-char-esc, { none-of("\"\\") }]) }
+  char('"')
+  PLit(cs.string)
+
+fun peg-class(): parse peg
+  char('[')
+  val neg = optional(False) { char('^'); True }
+  val ranges = many {
+    val c1 = choose([peg-char-esc, { none-of("]") }])
+    optional((c1, c1)) {
+      char('-')
+      val c2 = choose([peg-char-esc, { none-of("]") }])
+      (c1, c2)
+    }
+  }
+  char(']')
+  PClass(ranges, neg)
+
+fun peg-atom(): <parse,div> peg
+  peg-ws()
+  choose([
+    peg-string-lit,
+    peg-class,
+    { char('.'); PAny },
+    { char('('); peg-skip(); val p = peg-choice(); peg-skip(); char(')'); p },
+    { PRule(peg-ident()) }
+  ])
+
+fun peg-suffix(): <parse,div> peg
+  val p = peg-atom()
+  peg-ws()
+  optional(p) {
+    val op = one-of("*+?")
+    match op
+      '*' -> PStar(p)
+      '+' -> PPlus(p)
+      '?' -> POpt(p)
+      _ -> p
+  }
+
+fun peg-prefix(): <parse,div> peg
+  peg-ws()
+  choose([
+    { char('!'); PNot(peg-prefix()) },
+    { char('&'); PAnd(peg-prefix()) },
+    peg-suffix
+  ])
+
+fun peg-seq(): <parse,div> peg
+  val ps = many1(peg-prefix)
+  match ps
+    Cons(p, Nil) -> p
+    _ -> PSeq(ps)
+
+fun peg-choice(): <parse,div> peg
+  val first = peg-seq()
+  val rest = many {
+    peg-ws(); peg-skip(); char('/'); peg-skip()
+    peg-seq()
+  }
+  match rest
+    Nil -> first
+    _ -> PChoice(Cons(first, rest))
+
+fun peg-action-tag(): parse maybe<string>
+  optional(Nothing) {
+    peg-ws()
+    char('@')
+    Just(peg-ident())
+  }
+
+fun peg-rule(): <parse,div> rule
+  peg-skip()
+  val name = peg-ident()
+  peg-ws()
+  char('=')
+  peg-skip()
+  val body = peg-choice()
+  val tag = peg-action-tag()
+  (name, body, tag)
+
+pub fun parse-peg(input: string): <div,exn> grammar
+  match parse(input.slice, { many(peg-rule) })
+    ParseOk(g, _) -> g
+    ParseError(msg, _) -> throw("PEG parse error: " ++ msg)
+
+// === PEG Interpreter ===
+alias pstate = sslice
+
+effect peg-fail
+  ctl fail(): a
+
+// === Memoization for Packrat Parsing ===
+// Key: (rule_name, position), Value: parse result or failure
+pub alias memo-key = (string, int)
+pub alias memo-result = maybe<(pstate, ptree)>
+pub alias memo-table = list<(memo-key, memo-result)>
+
+fun memo-lookup(tbl: memo-table, key: memo-key): maybe<memo-result>
+  match tbl.filter(fn(e) e.fst == key)
+    Cons((_, v), _) -> Just(v)
+    Nil -> Nothing
+
+fun memo-store(tbl: memo-table, key: memo-key, v: memo-result): memo-table
+  Cons((key, v), tbl)
+
+// Position in the input (character offset from start)
+fun sslice-pos(s: sslice, original: sslice): int
+  original.count - s.count
+
+fun grammar-lookup(g: grammar, name: string): (peg, maybe<string>)
+  match g.filter(fn(r) r.fst == name)
+    Cons((_, p, tag), _) -> (p, tag)
+    Nil -> (PLit(""), Nothing)  // undefined rule = empty match
+
+fun in-class(c: char, ranges: list<(char,char)>, neg: bool): bool
+  val found = ranges.any(fn((lo, hi)) c >= lo && c <= hi)
+  if neg then !found else found
+
+fun peg-try(g: grammar, p: peg, s: pstate): <div> maybe<(pstate, ptree)>
+  with ctl fail() Nothing
+  Just(peg-match(g, p, s))
+
+// Memoized version - takes and returns memo table for pure functional memoization
+fun peg-try-memo(g: grammar, p: peg, s: pstate, memo: memo-table, orig: pstate): <div> (memo-table, maybe<(pstate, ptree)>)
+  with ctl fail() (memo, Nothing)
+  val (memo2, result) = peg-match-memo(g, p, s, memo, orig)
+  (memo2, Just(result))
+
+fun peg-match(g: grammar, p: peg, s: pstate): <peg-fail, div> (pstate, ptree)
+  match p
+    PLit(lit) ->
+      if s.string.sslice/starts-with(lit).bool then
+        (s.advance(lit.count), PLeaf(lit))
+      else fail()
+    
+    PAny ->
+      match s.next
+        Just((c, rest)) -> (rest, PLeaf(c.string))
+        Nothing -> fail()
+    
+    PClass(ranges, neg) ->
+      match s.next
+        Just((c, rest)) | in-class(c, ranges, neg) -> (rest, PLeaf(c.string))
+        _ -> fail()
+    
+    PSeq(ps) ->
+      var cur := s
+      var children := []
+      ps.foreach fn(p1)
+        val (s1, t1) = peg-match(g, p1, cur)
+        cur := s1
+        children := Cons(t1, children)
+      (cur, PNode("seq", children.reverse, s.string.first(s.count - cur.count).string))
+    
+    PChoice(ps) ->
+      peg-choice-match(g, ps, s)
+    
+    PStar(p1) ->
+      var cur := s
+      var children := []
+      while { peg-try(g, p1, cur).bool } fn()
+        match peg-try(g, p1, cur)
+          Just((s1, t1)) -> { cur := s1; children := Cons(t1, children) }
+          Nothing -> ()
+      (cur, PNode("star", children.reverse, s.string.first(s.count - cur.count).string))
+    
+    PPlus(p1) ->
+      val (s1, t1) = peg-match(g, p1, s)
+      val (s2, t2) = peg-match(g, PStar(p1), s1)
+      val ts = match t2
+        PNode(_, cs, _) -> cs
+        _ -> []
+      (s2, PNode("plus", Cons(t1, ts), s.string.first(s.count - s2.count).string))
+    
+    POpt(p1) ->
+      match peg-try(g, p1, s)
+        Just(r) -> r
+        Nothing -> (s, PNode("opt", [], ""))
+    
+    PNot(p1) ->
+      match peg-try(g, p1, s)
+        Just(_) -> fail()
+        Nothing -> (s, PLeaf(""))
+    
+    PAnd(p1) ->
+      val _ = peg-match(g, p1, s)
+      (s, PLeaf(""))
+    
+    PRule(name) ->
+      val (body, _) = grammar-lookup(g, name)
+      val (s1, t1) = peg-match(g, body, s)
+      (s1, PNode(name, match t1 { PNode(_, cs, _) -> cs; _ -> [t1] }, s.string.first(s.count - s1.count).string))
+
+fun peg-choice-match(g: grammar, ps: list<peg>, s: pstate): <peg-fail, div> (pstate, ptree)
+  match ps
+    Nil -> fail()
+    Cons(p, rest) ->
+      match peg-try(g, p, s)
+        Just(r) -> r
+        Nothing -> peg-choice-match(g, rest, s)
+
+// === Memoized PEG Matcher ===
+// Only memoizes at rule boundaries (PRule) for packrat-style parsing
+// Returns (updated_memo_table, parse_result)
+fun peg-match-memo(g: grammar, p: peg, s: pstate, memo: memo-table, orig: pstate): <peg-fail, div> (memo-table, (pstate, ptree))
+  match p
+    PLit(lit) ->
+      if s.string.sslice/starts-with(lit).bool then
+        (memo, (s.advance(lit.count), PLeaf(lit)))
+      else fail()
+
+    PAny ->
+      match s.next
+        Just((c, rest)) -> (memo, (rest, PLeaf(c.string)))
+        Nothing -> fail()
+
+    PClass(ranges, neg) ->
+      match s.next
+        Just((c, rest)) | in-class(c, ranges, neg) -> (memo, (rest, PLeaf(c.string)))
+        _ -> fail()
+
+    PSeq(ps) ->
+      var cur := s
+      var children := []
+      var m := memo
+      ps.foreach fn(p1)
+        val (m1, (s1, t1)) = peg-match-memo(g, p1, cur, m, orig)
+        m := m1
+        cur := s1
+        children := Cons(t1, children)
+      (m, (cur, PNode("seq", children.reverse, s.string.first(s.count - cur.count).string)))
+
+    PChoice(ps) ->
+      peg-choice-match-memo(g, ps, s, memo, orig)
+
+    PStar(p1) ->
+      var cur := s
+      var children := []
+      var m := memo
+      val init = peg-try-memo(g, p1, cur, m, orig)
+      var m2 := init.fst
+      var res := init.snd
+      while { res.bool } fn()
+        match res
+          Just((s1, t1)) ->
+            cur := s1
+            children := Cons(t1, children)
+            m := m2
+            val next = peg-try-memo(g, p1, cur, m, orig)
+            m2 := next.fst
+            res := next.snd
+          Nothing -> ()
+      (m, (cur, PNode("star", children.reverse, s.string.first(s.count - cur.count).string)))
+
+    PPlus(p1) ->
+      val (m1, (s1, t1)) = peg-match-memo(g, p1, s, memo, orig)
+      val (m2, (s2, t2)) = peg-match-memo(g, PStar(p1), s1, m1, orig)
+      val ts = match t2
+        PNode(_, cs, _) -> cs
+        _ -> []
+      (m2, (s2, PNode("plus", Cons(t1, ts), s.string.first(s.count - s2.count).string)))
+
+    POpt(p1) ->
+      val (m1, res) = peg-try-memo(g, p1, s, memo, orig)
+      match res
+        Just(r) -> (m1, r)
+        Nothing -> (m1, (s, PNode("opt", [], "")))
+
+    PNot(p1) ->
+      val (m1, res) = peg-try-memo(g, p1, s, memo, orig)
+      match res
+        Just(_) -> fail()
+        Nothing -> (m1, (s, PLeaf("")))
+
+    PAnd(p1) ->
+      val (m1, _) = peg-match-memo(g, p1, s, memo, orig)
+      (m1, (s, PLeaf("")))
+
+    PRule(name) ->
+      // Check memo table first
+      val pos = sslice-pos(s, orig)
+      val key = (name, pos)
+      match memo-lookup(memo, key)
+        Just(Just(result)) -> (memo, result)  // Cache hit: success
+        Just(Nothing) -> fail()               // Cache hit: failure
+        Nothing ->
+          // Cache miss: parse and store result
+          val (body, _) = grammar-lookup(g, name)
+          val (m1, result) = peg-try-memo(g, body, s, memo, orig)
+          val m2 = memo-store(m1, key, result)
+          match result
+            Just((s1, t1)) ->
+              (m2, (s1, PNode(name, match t1 { PNode(_, cs, _) -> cs; _ -> [t1] }, s.string.first(s.count - s1.count).string)))
+            Nothing -> fail()
+
+fun peg-choice-match-memo(g: grammar, ps: list<peg>, s: pstate, memo: memo-table, orig: pstate): <peg-fail, div> (memo-table, (pstate, ptree))
+  match ps
+    Nil -> fail()
+    Cons(p, rest) ->
+      val (m1, res) = peg-try-memo(g, p, s, memo, orig)
+      match res
+        Just(r) -> (m1, r)
+        Nothing -> peg-choice-match-memo(g, rest, s, m1, orig)
+
+pub fun peg-parse(g: grammar, start: string, input: string): <div> maybe<ptree>
+  match peg-try(g, PRule(start), input.slice)
+    Just((_, tree)) -> Just(tree)
+    Nothing -> Nothing
+
+pub fun peg-parse-partial(g: grammar, start: string, input: sslice): <div> maybe<(sslice, ptree)>
+  peg-try(g, PRule(start), input)
+
+// === Memoized Public API ===
+// Creates a memo table for packrat parsing, enabling efficient backtracking
+
+pub fun peg-parse-memo(g: grammar, start: string, input: string): <div> maybe<ptree>
+  val inp = input.slice
+  val (_, result) = peg-try-memo(g, PRule(start), inp, [], inp)
+  match result
+    Just((_, tree)) -> Just(tree)
+    Nothing -> Nothing
+
+// Memoized partial parse with persistent memo table
+// Returns (updated_memo_table, parse_result) for chaining
+pub fun peg-parse-partial-memo(g: grammar, start: string, input: sslice, memo: memo-table, orig: sslice): <div> (memo-table, maybe<(sslice, ptree)>)
+  peg-try-memo(g, PRule(start), input, memo, orig)
+
+// Create a new empty memo table
+pub fun memo-new(): memo-table
+  []
+
+// === Utilities ===
+pub fun ptree-text(t: ptree): string
+  match t
+    PNode(_, _, txt) -> txt
+    PLeaf(txt) -> txt
+
+pub fun ptree-children(t: ptree): list<ptree>
+  match t
+    PNode(_, cs, _) -> cs
+    PLeaf(_) -> []
+
+pub fun ptree-find(t: ptree, name: string): div list<ptree>
+  match t
+    PNode(n, cs, _) ->
+      val here = if n == name then [t] else []
+      here ++ cs.flatmap(fn(c) ptree-find(c, name))
+    PLeaf(_) -> []
+
+pub fun ptree-show(t: ptree, indent: int = 0): <console, div> ()
+  val pad = replicate(" ", indent).join
+  match t
+    PNode(name, cs, txt) ->
+      println(pad ++ name ++ ": \"" ++ txt.slice.sslice/take(30).string ++ "\"")
+      cs.foreach(fn(c) ptree-show(c, indent + 2))
+    PLeaf(txt) ->
+      if txt.count > 0 then println(pad ++ "leaf: \"" ++ txt ++ "\"")
+
+
+// === Semantic Actions API ===
+// Execute grammar with callbacks instead of building parse trees
+
+// Semantic value: polymorphic, defined by the user
+// Action: called when a rule matches, receives (rule_name, matched_text, child_values) -> value
+pub alias action<s> = (string, string, list<s>) -> s
+
+// Action table: maps rule names to actions
+pub alias actions<s> = list<(string, action<s>)>
+
+fun action-lookup(acts: actions<s>, name: string, default-action: action<s>): action<s>
+  match acts.filter(fn(a) a.fst == name)
+    Cons((_, act), _) -> act
+    Nil -> default-action
+
+// Execute PEG with semantic actions
+// Returns (remaining_input, semantic_value) or fails
+fun peg-exec-match(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: pstate): <peg-fail, div> (pstate, s)
+  match p
+    PLit(lit) ->
+      if s.string.sslice/starts-with(lit).bool then
+        (s.advance(lit.count), def("_lit", lit, []))
+      else fail()
+
+    PAny ->
+      match s.next
+        Just((c, rest)) -> (rest, def("_any", c.string, []))
+        Nothing -> fail()
+
+    PClass(ranges, neg) ->
+      match s.next
+        Just((c, rest)) | in-class(c, ranges, neg) -> (rest, def("_class", c.string, []))
+        _ -> fail()
+
+    PSeq(ps) ->
+      var cur := s
+      var vals := []
+      ps.foreach fn(p1)
+        val (s1, v1) = peg-exec-match(g, acts, def, p1, cur)
+        cur := s1
+        vals := Cons(v1, vals)
+      (cur, def("_seq", s.string.first(s.count - cur.count).string, vals.reverse))
+
+    PChoice(ps) ->
+      peg-exec-choice(g, acts, def, ps, s)
+
+    PStar(p1) ->
+      var cur := s
+      var vals := []
+      while { peg-exec-try(g, acts, def, p1, cur).bool } fn()
+        match peg-exec-try(g, acts, def, p1, cur)
+          Just((s1, v1)) -> { cur := s1; vals := Cons(v1, vals) }
+          Nothing -> ()
+      (cur, def("_star", s.string.first(s.count - cur.count).string, vals.reverse))
+
+    PPlus(p1) ->
+      val (s1, v1) = peg-exec-match(g, acts, def, p1, s)
+      val (s2, _) = peg-exec-match(g, acts, def, PStar(p1), s1)
+      (s2, def("_plus", s.string.first(s.count - s2.count).string, [v1]))
+
+    POpt(p1) ->
+      match peg-exec-try(g, acts, def, p1, s)
+        Just((s1, v1)) -> (s1, def("_opt", s.string.first(s.count - s1.count).string, [v1]))
+        Nothing -> (s, def("_opt", "", []))
+
+    PNot(p1) ->
+      match peg-exec-try(g, acts, def, p1, s)
+        Just(_) -> fail()
+        Nothing -> (s, def("_not", "", []))
+
+    PAnd(p1) ->
+      val _ = peg-exec-match(g, acts, def, p1, s)
+      (s, def("_and", "", []))
+
+    PRule(name) ->
+      val (body, tag) = grammar-lookup(g, name)
+      val (s1, v1) = peg-exec-match(g, acts, def, body, s)
+      val txt = s.string.first(s.count - s1.count).string
+      // Use tag if present, otherwise fall back to rule name
+      val action-name = tag.default(name)
+      val act = action-lookup(acts, action-name, def)
+      (s1, act(action-name, txt, [v1]))
+
+fun peg-exec-try(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: pstate): <div> maybe<(pstate, s)>
+  with ctl fail() Nothing
+  Just(peg-exec-match(g, acts, def, p, s))
+
+fun peg-exec-choice(g: grammar, acts: actions<s>, def: action<s>, ps: list<peg>, s: pstate): <peg-fail, div> (pstate, s)
+  match ps
+    Nil -> fail()
+    Cons(p, rest) ->
+      match peg-exec-try(g, acts, def, p, s)
+        Just(r) -> r
+        Nothing -> peg-exec-choice(g, acts, def, rest, s)
+
+// Public API for semantic action execution
+pub fun peg-exec(g: grammar, acts: actions<s>, def: action<s>, start: string, input: string): <div> maybe<s>
+  match peg-exec-try(g, acts, def, PRule(start), input.slice)
+    Just((_, v)) -> Just(v)
+    Nothing -> Nothing
+
+pub fun peg-exec-partial(g: grammar, acts: actions<s>, def: action<s>, start: string, input: sslice): <div> maybe<(sslice, s)>
+  peg-exec-try(g, acts, def, PRule(start), input)
+
+// Dummy main for standalone compilation
+pub fun main(): console ()
+  "PEG module loaded".println

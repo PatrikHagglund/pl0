@@ -1,0 +1,93 @@
+// Tests for the PEG interpreter
+module peg_test
+
+import src/peg
+
+fun test(name: string, ok: bool): console ()
+  println((if ok then "✓ " else "✗ ") ++ name)
+
+pub fun main(): <console, div, exn> ()
+  println("=== PEG Parser Tests ===\n")
+
+  // Literal matching
+  val g1 = parse-peg("r = \"hello\"")
+  test("literal match", peg-parse(g1, "r", "hello").is-just)
+  test("literal no match", peg-parse(g1, "r", "world").is-nothing)
+
+  // Any character
+  val g2 = parse-peg("r = .")
+  test("any matches char", peg-parse(g2, "r", "x").is-just)
+  test("any fails empty", peg-parse(g2, "r", "").is-nothing)
+
+  // Character class
+  val g3 = parse-peg("r = [a-z]")
+  test("class matches", peg-parse(g3, "r", "m").is-just)
+  test("class rejects", peg-parse(g3, "r", "5").is-nothing)
+
+  // Negated class
+  val g4 = parse-peg("r = [^0-9]")
+  test("negated class matches", peg-parse(g4, "r", "x").is-just)
+  test("negated class rejects", peg-parse(g4, "r", "5").is-nothing)
+
+  // Sequence
+  val g5 = parse-peg("r = \"a\" \"b\"")
+  test("sequence matches", peg-parse(g5, "r", "ab").is-just)
+  test("sequence partial fails", peg-parse(g5, "r", "a").is-nothing)
+
+  // Choice
+  val g6 = parse-peg("r = \"a\" / \"b\"")
+  test("choice first", peg-parse(g6, "r", "a").is-just)
+  test("choice second", peg-parse(g6, "r", "b").is-just)
+  test("choice neither", peg-parse(g6, "r", "c").is-nothing)
+
+  // Star (zero or more)
+  val g7 = parse-peg("r = \"a\"*")
+  test("star zero", peg-parse(g7, "r", "").is-just)
+  test("star many", peg-parse(g7, "r", "aaa").is-just)
+
+  // Plus (one or more)
+  val g8 = parse-peg("r = \"a\"+")
+  test("plus one", peg-parse(g8, "r", "a").is-just)
+  test("plus many", peg-parse(g8, "r", "aaa").is-just)
+  test("plus zero fails", peg-parse(g8, "r", "").is-nothing)
+
+  // Optional
+  val g9 = parse-peg("r = \"a\"?")
+  test("optional present", peg-parse(g9, "r", "a").is-just)
+  test("optional absent", peg-parse(g9, "r", "").is-just)
+
+  // Not predicate
+  val g10 = parse-peg("r = !\"x\" .")
+  test("not predicate pass", peg-parse(g10, "r", "a").is-just)
+  test("not predicate fail", peg-parse(g10, "r", "x").is-nothing)
+
+  // And predicate
+  val g11 = parse-peg("r = &\"a\" .")
+  test("and predicate pass", peg-parse(g11, "r", "a").is-just)
+  test("and predicate fail", peg-parse(g11, "r", "b").is-nothing)
+
+  // Rule reference
+  val g12 = parse-peg("r = a a\na = \"x\"")
+  test("rule reference", peg-parse(g12, "r", "xx").is-just)
+
+  // Comments in grammar
+  val g13 = parse-peg("// comment\nr = \"x\"")
+  test("grammar comment", peg-parse(g13, "r", "x").is-just)
+
+  // Integer pattern
+  val g14 = parse-peg("num = [0-9]+")
+  test("integer", peg-parse(g14, "num", "123").is-just)
+
+  // Identifier pattern
+  val g15 = parse-peg("id = [a-zA-Z] [a-zA-Z0-9]*")
+  test("identifier", peg-parse(g15, "id", "foo42").is-just)
+
+  // Comment pattern (the tricky one)
+  val g16 = parse-peg("comment = \"//\" (!\"\\n\" .)*")
+  test("comment pattern", peg-parse(g16, "comment", "// hello world").is-just)
+
+  // Whitespace with comments
+  val g17 = parse-peg("ws = ([ \\t\\n] / \"//\" (!\"\\n\" .)*)*\nr = ws \"x\" ws")
+  test("ws with comment", peg-parse(g17, "r", "// test\nx").is-just)
+
+  println("\n=== Done ===")
