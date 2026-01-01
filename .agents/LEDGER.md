@@ -33,13 +33,26 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - Other levels do not have interpreters (or compilers). They are sketched with a PEG grammars and code example files.
 
 ## Next
+- Check the open question above.
+- Check Makefile rules for proper dependency handling
+- Why such large difference in performance between C++ and LLVM IR backends when using bigints? (Insufficient link-time optimization?)
+- Revisit the use of break_ifz vs when loops for some of the examples. Which one give the least amount of code?
+- How to apply the Language Implementation Configuration parameters in pl0_1.hpp to the Koka interpreters?
+- Align pl0_0 implementations to pl0_1
+- Explore examples where parse errors (in dead code) cause different behaviour between the two Koka intepreters.
 - Explore (more of a) full embedded action language in PEG (beyond @tag)
+- Rename the pl0 languages to "E" or "e" (standing for "explore", but perhaps later for "expressive" and "efficient")?
+- Write document about design decisions.
 - Support for "syntactic sugar"?
 - Explore papers about efficient interpreters.
+  - Test Graal/Truffle
   - Plan some adoptions towards a more efficient implementation
   - Simple JIT?
 - Continue with other grammar/interpreter work
 - Standard library?
+- Support for symbolic expressions (as in computer algebra systems)?
+- Testing with a tool like llvm-stress (and llvm-reduce)
+- Perhaps a seprate project: "Agent DSL": Use LLMs and tools as operators and add memory and parallel control flow. VALIDATE/RETRY clause. Linda-style parallelism for sharing context information?
 
 ## Now
 
