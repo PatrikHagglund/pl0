@@ -6,37 +6,17 @@ A programming language is considered **Turing-complete** (or Turing-equivalent) 
 
 While modern languages like C++, Python, or Java are Turing-complete, they are far from minimal. They include vast standard libraries, complex syntax, and numerous features for developer ergonomics. **Minimal** Turing-equivalent languages, by contrast, seek to achieve this computational universality with the absolute minimum number of commands, symbols, or concepts. These languages are often theoretical constructs or "esoteric" languages (esolangs) designed to explore the boundaries of computability.
 
-## The Boundary: What Requires Turing Completeness?
+### The Essence of Computation
 
-Not all algorithms require the full power of a Turing machine. Understanding this boundary clarifies why minimal Turing-complete languages matter.
+Despite their radical differences—ranging from 1D tapes to 2D grids, and from arithmetic instructions to graph rewrites—all minimal Turing-equivalent systems share a common core:
 
-### Primitive Recursive Functions
+1.  **Unbounded Memory/State:** A mechanism to expand state indefinitely (an infinite tape, an expanding string, a growing graph, or an infinite grid). Finite state machines cannot be Turing-complete.
 
-Most "everyday" algorithms—factorial, Fibonacci, sorting, matrix multiplication—are **primitive recursive**: bounded iteration, guaranteed termination, recursion on strictly decreasing arguments. This corresponds to programs with only `for` loops (no `while`).
-[Wikipedia: Primitive Recursive Function](https://en.wikipedia.org/wiki/Primitive_recursive_function)
+2.  **Conditional Branching/Rewriting:** A way to alter the flow of execution based on the current data. In OISC this is a jump; in Lambda Calculus it is encoded via combinators; in Cellular Automata it is the state transition rule.
 
-### Beyond Primitive Recursion
+3.  **Iteration/Recursion:** The ability to repeat a process indefinitely.
 
-Adding **unbounded search** (the μ-operator) yields the **general recursive functions**, equivalent to Turing machines. Examples of total functions requiring this machinery: the [Ackermann function](https://en.wikipedia.org/wiki/Ackermann_function) (1928), the [Sudan function](https://en.wikipedia.org/wiki/Sudan_function) (1927).
-[Wikipedia: General Recursive Function](https://en.wikipedia.org/wiki/General_recursive_function)
-
-### Truly Undecidable Problems
-
-Some problems require Turing completeness yet remain unsolvable: the [Halting Problem](https://en.wikipedia.org/wiki/Halting_problem), the [Busy Beaver function](https://en.wikipedia.org/wiki/Busy_beaver), [Rice's theorem](https://en.wikipedia.org/wiki/Rice%27s_theorem).
-
-### The Minimal Threshold
-
-The jump to Turing-completeness occurs when a system gains unbounded loops with data-dependent exit, general recursion, or unbounded minimization.
-
-Well-known algorithms illustrating this boundary:
-
-- **[Collatz iteration](https://en.wikipedia.org/wiki/Collatz_conjecture)**: "If even, halve; if odd, triple and add 1. Repeat until reaching 1." No known bound exists on the number of steps—the algorithm requires unbounded iteration with data-dependent termination.
-
-- **[Goodstein sequences](https://en.wikipedia.org/wiki/Goodstein%27s_theorem)**: Start with a number in hereditary base-2, bump the base to 3, subtract 1, repeat. Despite appearances (the numbers grow astronomically at first), this process always reaches 0—but proving termination requires transfinite induction, beyond standard arithmetic.
-
-- **[Euclidean algorithm](https://en.wikipedia.org/wiki/Euclidean_algorithm)**: Computing GCD via repeated division. Always terminates (provably), but the number of steps depends on the input values and cannot be bounded by a simple formula of the inputs.
-
-The minimal languages below represent different ways to achieve exactly this threshold with the fewest possible primitives.
+If a system provides these three capabilities, it is likely capable of universal computation. The minimal languages below represent different ways to achieve exactly this with the fewest possible primitives.
 
 ## Models and Classes
 
@@ -286,23 +266,63 @@ The "shape" of the memory or state space varies significantly:
 
 *   **Graph/Network:** Interaction Nets. (Dynamic topology).
 
-## Conclusion: The Essence of Computation
+## The Boundary: What Requires Turing Completeness?
 
-Despite their radical differences—ranging from 1D tapes to 2D grids, and from arithmetic instructions to graph rewrites—all these minimal Turing-equivalent systems share a common core.
+Not all algorithms require the full power of a Turing machine. Understanding this boundary clarifies why minimal Turing-complete languages matter.
 
-1.  **Unbounded Memory/State:** They all provide a mechanism to expand state indefinitely (an infinite tape, an expanding string, a growing graph, or an infinite grid). Finite state machines cannot be Turing-complete.
+### Primitive Recursive Functions
 
-2.  **Conditional Branching/Rewriting:** They all possess a way to alter the flow of execution based on the current data. In OISC this is a jump; in Lambda Calculus it is encoded via combinators (e.g., Church booleans); in Cellular Automata it is the state transition rule.
+Most "everyday" algorithms—factorial, Fibonacci, sorting, matrix multiplication—are **primitive recursive**: bounded iteration, guaranteed termination, recursion on strictly decreasing arguments. This corresponds to programs with only `for` loops (no `while`).
+[Wikipedia: Primitive Recursive Function](https://en.wikipedia.org/wiki/Primitive_recursive_function)
 
-3.  **Iteration/Recursion:** They all support the ability to repeat a process indefinitely.
+### Beyond Primitive Recursion
 
-Beyond these core requirements, minimal systems also vary in other dimensions:
+Adding **unbounded search** (the μ-operator) yields the **general recursive functions**, equivalent to Turing machines. Examples of total functions requiring this machinery: the [Ackermann function](https://en.wikipedia.org/wiki/Ackermann_function) (1928), the [Sudan function](https://en.wikipedia.org/wiki/Sudan_function) (1927).
+[Wikipedia: General Recursive Function](https://en.wikipedia.org/wiki/General_recursive_function)
 
-*   **Sequential vs. Parallel Execution:** Some models are strictly sequential, while others are inherently parallel. Determinism varies independently of parallelism (e.g., Interaction Nets are parallel yet confluent).
+### The Price of Power: Safety vs. Universality
 
-*  **Structural Diversity:** Universal computation is "substrate independent." It can emerge from 1D tapes, 2D grids, abstract graphs, or pure number theory, and can be either reversible or irreversible.
+Crossing the boundary to Turing completeness comes with a fundamental trade-off: **you lose the ability to guarantee termination.**
 
-Ultimately, these systems demonstrate that computation is not about the complexity of the processor, but the **expressiveness of the rules**. If a system allows for indefinite storage and a simple conditional feedback loop, it is likely capable of universal computation.
+*   In a **Primitive Recursive** system (like eBPF filters in the Linux kernel), we can statically verify that a program will finish and is safe to run.
+*   In a **Turing Complete** system, we cannot generally prove a program will ever stop (The Halting Problem). This is why "safe" environments (like blockchain contracts or packet filters) often impose artificial limits (gas fees, instruction counts) to force termination, effectively dragging the system back *below* the boundary.
+
+### The Minimal Threshold
+
+The jump to Turing-completeness occurs when a system gains unbounded loops with data-dependent exit, general recursion, or unbounded minimization.
+
+Well-known algorithms illustrating this boundary:
+
+- [Collatz iteration](https://en.wikipedia.org/wiki/Collatz_conjecture): If even, halve; if odd, triple and add 1. Repeat until 1. No known bound on steps.
+
+- [Goodstein sequences](https://en.wikipedia.org/wiki/Goodstein%27s_theorem): Rewrite in hereditary base-n, bump base, subtract 1, repeat. Always terminates—but unprovable in Peano arithmetic.
+
+- [Euclidean algorithm](https://en.wikipedia.org/wiki/Euclidean_algorithm): GCD via repeated division. Terminates, but steps depend on input values.
+
+### Algorithms Native to Non-Sequential Models
+
+All Turing-complete models can simulate each other, but some algorithms are more naturally expressed in specific paradigms:
+
+**Parallel/Concurrent models:**
+- [Dining philosophers](https://en.wikipedia.org/wiki/Dining_philosophers_problem), [producer-consumer](https://en.wikipedia.org/wiki/Producer%E2%80%93consumer_problem) — natural in process calculi (CSP, π-calculus) and Petri nets
+- Cellular automata simulations (fluid dynamics, Life patterns) — native to CA; require explicit grid iteration elsewhere
+- [Graph reduction](https://en.wikipedia.org/wiki/Graph_reduction) — natural in interaction nets; lambda calculus evaluation can proceed in parallel at independent redexes
+
+**Nondeterministic models:**
+- [SAT solving](https://en.wikipedia.org/wiki/SAT_solver), constraint satisfaction — nondeterministic TMs can "guess" and verify; deterministic machines must search
+- Parsing [ambiguous grammars](https://en.wikipedia.org/wiki/Ambiguous_grammar) — nondeterministic pushdown automata handle ambiguity naturally
+
+**String rewriting:**
+- [Markov algorithms](https://en.wikipedia.org/wiki/Markov_algorithm), formal grammars — map directly to Semi-Thue systems
+- [DNA computing](https://en.wikipedia.org/wiki/DNA_computing) — naturally expressed as molecular string operations
+
+**Dataflow:**
+- Signal processing, [reactive systems](https://en.wikipedia.org/wiki/Reactive_programming) — dataflow architectures express these without explicit sequencing
+- Spreadsheet recalculation — dependency-driven, not imperative
+
+### Accidental Completeness
+
+Turing completeness often emerges unintentionally in systems designed for simple tasks, such as **C++ Templates**, **Magic: The Gathering** rules, **CSS** (with specific selectors), and even **PowerPoint** animations. These "accidental" systems prove that universality is a low bar to clear once state and basic rewriting rules are present.
 
 ## Connection to Practical Programming Languages
 
