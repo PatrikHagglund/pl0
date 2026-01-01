@@ -17,7 +17,7 @@ Currently in an initial work-in-progress state.
 
 ## Setup
 
-The project uses a single Podman container (Fedora rawhide) with all tools:
+The project uses a single Podman container (Fedora Rawhide) with all tools:
 - g++ (C++26)
 - LLVM/Clang
 - Koka
@@ -103,10 +103,6 @@ Located in `examples/`:
 - `example_1.pl0` — Emulating pl0_2 features in pl0_1
 - `bench_1_factorial.pl0` — Factorial benchmark
 
-## Files
-
-Grammars in `src/`: `pl0_0.peg` through `pl0_6.peg`
-
 ## Implementations
 
 | Approach | Files | Notes |
@@ -116,102 +112,39 @@ Grammars in `src/`: `pl0_0.peg` through `pl0_6.peg`
 | C++ interpreter | `pl0_1.cpp`, `pl0_1.hpp` | Handwritten, AST used |
 | Compiler in C++ | `pl0_1_compile.cpp`, `pl0_1.hpp` | C++ or LLVM IR backend |
 
-### Integer Bit Width
+See [docs/IMPLEMENTATIONS.md](docs/IMPLEMENTATIONS.md) for details on each implementation.
 
-All C++ implementations share `src/pl0_1.hpp` which defines `INT_BITS`:
-
-| INT_BITS | Type | Notes |
-|----------|------|-------|
-| 0 | Boost cpp_int | Arbitrary precision (bigint) |
-| 32, 64, 128 | Native | `int32_t`, `int64_t`, `__int128` |
-| 256, 512, ... | Boost fixed | Any width via Boost.Multiprecision |
-
-The LLVM backend requires `INT_BITS > 0` (fixed width). The C++ backend supports all modes including bigint.!
-
-### Koka Interpreters
-
-Source code is in `src/`.
-
-**Direct Interpreter (`src/pl01.koka`)** — Hand-written parser:
+### Quick Start
 
 ```bash
-make koka-pl0
+make koka-pl0       # Koka interpreter
+make koka-peg       # Koka PEG interpreter
+make run            # C++ interpreter
+make run-compile    # C++ compiler (C++ backend)
+make run-llvm       # C++ compiler (LLVM JIT)
 ```
-
-Output: `7`, `1`, `8` (runs `examples/example_0.pl0`)
-
-**PEG-based Interpreter (`src/peg.koka` + `src/pl0peg1.koka`)** — Meta-interpreter that reads grammar from a `.peg` file:
-
-- `src/peg.koka` — Generic PEG parser/interpreter (~270 lines)
-- `src/pl0peg1.koka` — PL/0 semantic actions and evaluator (~250 lines)
-- `src/pl0_1.peg` — Grammar file compatible with the PEG interpreter
-
-```bash
-make koka-peg
-```
-
-Output: `7`, `1`, `8` (runs `examples/example_0.pl0`)
-
-### C++ Interpreter
-
-Standalone interpreter for pl0_1 (`src/pl0_1.cpp`):
-
-```bash
-make run
-```
-
-Output: `7`, `1`, `8` (runs `examples/example_0.pl0`)
-
-Uses a container (Fedora rawhide with g++) for C++26 features (`std::expected`).
-
-### Compiler in C++
-
-Unified compiler with two backends (`src/pl0_1_compile.cpp`):
-
-- C++ backend (default): supports all INT_BITS including bigint
-- LLVM IR backend (`--llvm`): requires INT_BITS > 0
-
-```bash
-make run-compile        # C++ backend
-make run-llvm           # LLVM IR with lli (JIT)
-make run-llvm-native    # LLVM IR compiled to native with clang -O3
-```
-
-Output: `7`, `1`, `8` (runs `examples/example_0.pl0`)
-
-Or manually:
-```bash
-make pl0_1_compile
-./pl0_1_compile examples/bench_1_factorial.pl0 > out.cpp
-g++ -std=gnu++26 -O3 out.cpp -o out && ./out 10 33
-
-./pl0_1_compile --llvm examples/bench_1_factorial.pl0 > out.ll
-lli out.ll 10 33        # 10 iterations of 33!
-clang -O3 out.ll -o out && ./out 10 33
-```
-
-The container includes LLVM tools (`lli`, `llc`, `clang`) and Boost.
 
 ## Benchmarks
-
-Factorial benchmark (`examples/bench_1_factorial.pl0`):
 
 ```bash
 make bench-1                           # default: 2000 iterations of 31!
 make bench-1 BENCH_1_ARGS="100 20"     # custom: 100 iterations of 20!
 ```
 
-Compares: `lli` (JIT), `clang -O0`, `clang -O3`, C++ interpreter, and Koka interpreter.
-
-Example results for `2000 31`:
+Example results for `2000 31` (with bigint, INT_BITS=0):
 
 | Implementation | Time |
 |----------------|------|
-| clang -O3 | 2ms |
-| clang -O0 | 4ms |
-| lli (JIT) | 37ms |
-| C++ interpreter | 0.6s |
-| koka -O3 | 2.1s |
-| koka -O3 (PEG) | 2.4s |
+| C++ backend -O3 | 18ms |
+| LLVM IR backend -O3 | 149ms |
+| LLVM IR backend -O0 | 186ms |
+| LLVM IR backend lli (JIT) | 288ms |
+| C++ interpreter | 0.7s |
+| Koka interpreter | 2.2s |
+| Koka interpreter (PEG) | 2.4s |
 
-Note: i128 limits the sum to avoid overflow (max ~19 iterations for 33!).
+## Further Reading
+
+- [docs/IMPLEMENTATIONS.md](docs/IMPLEMENTATIONS.md) — Implementation details, integer bit width configuration
+- [docs/PEG_SPEC.md](docs/PEG_SPEC.md) — PEG grammar specification
+- [docs/minimal_turing_languages.md](docs/minimal_turing_languages.md) — Survey of minimal Turing-complete languages (Minsky machines, λ-calculus, etc.)

@@ -14,7 +14,10 @@
 
 // ---------- Configuration ----------
 
-constexpr int INT_BITS = 128;  // 0 = bigint, 32/64/128 = native, >128 = Boost fixed
+// 0 = bigint (dynamic), 32/64/128 = native, >128 = Boost fixed-width
+// Bigint and fixed-width have similar performance; prefer bigint to avoid overflow.
+// LLVM backend: bigint requires linking with pl0_1_rt_bigint.bc (see Makefile).
+constexpr int INT_BITS = 0;
 
 #include <boost/multiprecision/cpp_int.hpp>
 namespace mp = boost::multiprecision;

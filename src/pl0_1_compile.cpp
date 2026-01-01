@@ -87,10 +87,18 @@ struct CppGen {
 struct LlvmGen {
     int t = 0, lbl = 0;
     std::vector<int> ex;
-    std::string I = std::format("i{}", INT_BITS);
+    bool bigint = (INT_BITS == 0);
+    std::string I = bigint ? "ptr" : std::format("i{}", INT_BITS);
 
     std::string e(Expr* x) {
-        if (auto* n = dynamic_cast<NumberExpr*>(x)) return std::to_string(n->val);
+        if (auto* n = dynamic_cast<NumberExpr*>(x)) {
+            if (bigint) {
+                auto r = std::format("%t{}", t++);
+                std::println("  {} = call ptr @bi_new(i64 {})", r, n->val);
+                return r;
+            }
+            return std::to_string(n->val);
+        }
         if (auto* v = dynamic_cast<VarExpr*>(x)) {
             auto r = std::format("%t{}", t++);
             std::println("  {} = load {}, ptr %{}", r, I, v->name);
@@ -98,15 +106,17 @@ struct LlvmGen {
         }
         if (auto* u = dynamic_cast<NegExpr*>(x)) {
             auto r = std::format("%t{}", t++);
-            std::println("  {} = sub {} 0, {}", r, I, e(u->e.get()));
+            if (bigint) std::println("  {} = call ptr @bi_neg(ptr {})", r, e(u->e.get()));
+            else std::println("  {} = sub {} 0, {}", r, I, e(u->e.get()));
             return r;
         }
         if (auto* b = dynamic_cast<BinExpr*>(x)) {
-            auto l = e(b->l.get()), r = e(b->r.get()), o = std::format("%t{}", t++);
-            std::println("  {} = {} {} {}, {}", o, b->op == '+' ? "add" : "sub", I, l, r);
+            auto l = e(b->l.get()), rv = e(b->r.get()), o = std::format("%t{}", t++);
+            if (bigint) std::println("  {} = call ptr @bi_{}(ptr {}, ptr {})", o, b->op == '+' ? "add" : "sub", l, rv);
+            else std::println("  {} = {} {} {}, {}", o, b->op == '+' ? "add" : "sub", I, l, rv);
             return o;
         }
-        return "0";
+        return bigint ? "null" : "0";
     }
 
     void s(Stmt* x) {
@@ -123,22 +133,61 @@ struct LlvmGen {
             ex.pop_back();
         }
         else if (auto* b = dynamic_cast<BreakIfzStmt*>(x)) {
-            auto c = e(b->cond.get()), r = std::format("%t{}", t++);
+            auto c = e(b->cond.get());
+            auto r = std::format("%t{}", t++);
             int n = lbl++;
-            std::println("  {} = icmp eq {} {}, 0", r, I, c);
-            std::println("  br i1 {}, label %L{}, label %L{}\nL{}:", r, ex.back(), n, n);
+            if (bigint) {
+                std::println("  {} = call i32 @bi_is_zero(ptr {})", r, c);
+                std::println("  %cmp{} = icmp ne i32 {}, 0", n, r);
+                std::println("  br i1 %cmp{}, label %L{}, label %L{}\nL{}:", n, ex.back(), n, n);
+            } else {
+                std::println("  {} = icmp eq {} {}, 0", r, I, c);
+                std::println("  br i1 {}, label %L{}, label %L{}\nL{}:", r, ex.back(), n, n);
+            }
         }
-        else if (auto* p = dynamic_cast<PrintStmt*>(x))
-            std::println("  call void @print_int({} {})", I, e(p->e.get()));
+        else if (auto* p = dynamic_cast<PrintStmt*>(x)) {
+            if (bigint) std::println("  call void @bi_print(ptr {})", e(p->e.get()));
+            else std::println("  call void @print_int({} {})", I, e(p->e.get()));
+        }
     }
 
     void gen(std::vector<StmtPtr>& prog) {
-        auto ret = INT_BITS <= 32 ? "  %v = trunc i64 %v64 to i32\n  ret i32 %v"
-                 : INT_BITS <= 64 ? "  ret i64 %v64"
-                 : std::format("  %v = sext i64 %v64 to {0}\n  ret {0} %v", I);
-        auto dig = INT_BITS <= 32 ? "  %c = add i32 %rem, 48"
-                 : std::format("  %d = trunc {} %rem to i32\n  %c = add i32 %d, 48", I);
-        std::println(R"(declare i32 @putchar(i32)
+        if (bigint) {
+            std::println(R"(declare ptr @bi_new(i64)
+declare ptr @bi_add(ptr, ptr)
+declare ptr @bi_sub(ptr, ptr)
+declare ptr @bi_neg(ptr)
+declare i32 @bi_is_zero(ptr)
+declare void @bi_print(ptr)
+declare ptr @bi_from_str(ptr)
+
+define i32 @main(i32 %argc, ptr %argv) {{
+entry:)");
+            for (auto& v : collect_vars(prog))
+                std::println("  %{0} = alloca ptr\n  %{0}_init = call ptr @bi_new(i64 0)\n  store ptr %{0}_init, ptr %{0}", v);
+            auto parse_arg = [](int idx) {
+                std::println("  %has{0} = icmp sgt i32 %argc, {0}", idx);
+                std::println("  br i1 %has{0}, label %read{0}, label %def{0}", idx);
+                std::println("read{}:", idx);
+                std::println("  %p{0} = getelementptr ptr, ptr %argv, i32 {0}", idx);
+                std::println("  %s{0} = load ptr, ptr %p{0}", idx);
+                std::println("  %v{0} = call ptr @bi_from_str(ptr %s{0})", idx);
+                std::println("  br label %done{}", idx);
+                std::println("def{}:", idx);
+                std::println("  %z{0} = call ptr @bi_new(i64 0)", idx);
+                std::println("  br label %done{}", idx);
+                std::println("done{}:", idx);
+                std::println("  %a{0} = phi ptr [ %v{0}, %read{0} ], [ %z{0}, %def{0} ]", idx);
+            };
+            std::println("  %arg1 = alloca ptr"); parse_arg(1); std::println("  store ptr %a1, ptr %arg1");
+            std::println("  %arg2 = alloca ptr"); parse_arg(2); std::println("  store ptr %a2, ptr %arg2");
+        } else {
+            auto ret = INT_BITS <= 32 ? "  %v = trunc i64 %v64 to i32\n  ret i32 %v"
+                     : INT_BITS <= 64 ? "  ret i64 %v64"
+                     : std::format("  %v = sext i64 %v64 to {0}\n  ret {0} %v", I);
+            auto dig = INT_BITS <= 32 ? "  %c = add i32 %rem, 48"
+                     : std::format("  %d = trunc {} %rem to i32\n  %c = add i32 %d, 48", I);
+            std::println(R"(declare i32 @putchar(i32)
 declare i64 @strtol(ptr, ptr, i32)
 
 define void @print_int_rec({0} %v) {{
@@ -184,10 +233,11 @@ default:
 
 define i32 @main(i32 %argc, ptr %argv) {{
 entry:)", I, ret, dig);
-        for (auto& v : collect_vars(prog))
-            std::println("  %{} = alloca {}\n  store {} 0, ptr %{}", v, I, I, v);
-        std::println("  %arg1 = alloca {0}\n  %a1 = call {0} @parse_arg(i32 %argc, ptr %argv, i32 1)\n  store {0} %a1, ptr %arg1", I);
-        std::println("  %arg2 = alloca {0}\n  %a2 = call {0} @parse_arg(i32 %argc, ptr %argv, i32 2)\n  store {0} %a2, ptr %arg2", I);
+            for (auto& v : collect_vars(prog))
+                std::println("  %{} = alloca {}\n  store {} 0, ptr %{}", v, I, I, v);
+            std::println("  %arg1 = alloca {0}\n  %a1 = call {0} @parse_arg(i32 %argc, ptr %argv, i32 1)\n  store {0} %a1, ptr %arg1", I);
+            std::println("  %arg2 = alloca {0}\n  %a2 = call {0} @parse_arg(i32 %argc, ptr %argv, i32 2)\n  store {0} %a2, ptr %arg2", I);
+        }
         for (auto& x : prog) s(x.get());
         std::println("  ret i32 0\n}}");
     }
@@ -201,8 +251,6 @@ int main(int argc, char** argv) {
     if (!file) { std::println(stderr, "Usage: {} [--llvm] <file>", argv[0]); return 1; }
     auto prog = parse_program(read_file(file));
     if (!prog) { std::println(stderr, "Error: {}", prog.error()); return 1; }
-    if (llvm) {
-        if constexpr (INT_BITS == 0) { std::println(stderr, "Error: LLVM needs INT_BITS > 0"); return 1; }
-        else LlvmGen{}.gen(*prog);
-    } else CppGen{}.gen(*prog);
+    if (llvm) LlvmGen{}.gen(*prog);
+    else CppGen{}.gen(*prog);
 }
