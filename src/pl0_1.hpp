@@ -12,6 +12,24 @@
 #include <print>
 #include <format>
 
+// ---------- Configuration ----------
+
+constexpr int INT_BITS = 128;  // 0 = bigint, 32/64/128 = native, >128 = Boost fixed
+
+#include <boost/multiprecision/cpp_int.hpp>
+namespace mp = boost::multiprecision;
+
+template<int Bits> struct IntType;
+template<> struct IntType<0>   { using type = mp::cpp_int; };
+template<> struct IntType<32>  { using type = int32_t; };
+template<> struct IntType<64>  { using type = int64_t; };
+template<> struct IntType<128> { using type = __int128; };
+template<int Bits> requires (Bits > 128) struct IntType<Bits> { 
+    using type = mp::number<mp::cpp_int_backend<Bits, Bits, mp::signed_magnitude, mp::unchecked, void>>;
+};
+
+using Int = typename IntType<INT_BITS>::type;
+
 // ---------- Tokens ----------
 
 enum class Tok { NUM, ID, ASSIGN, COLON, PLUS, MINUS, LPAREN, RPAREN, LBRACE, RBRACE, LOOP, BREAK_IFZ, PRINT, SEMI, END };

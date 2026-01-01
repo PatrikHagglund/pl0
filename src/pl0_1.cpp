@@ -2,7 +2,6 @@
 #include "pl0_1.hpp"
 #include <unordered_map>
 
-using Int = __int128;
 using Env = std::unordered_map<std::string, Int>;
 
 Int eval(Expr* e, Env& env) {
@@ -11,12 +10,22 @@ Int eval(Expr* e, Env& env) {
     if (auto* u = dynamic_cast<NegExpr*>(e)) return -eval(u->e.get(), env);
     if (auto* b = dynamic_cast<BinExpr*>(e)) {
         Int l = eval(b->l.get(), env), r = eval(b->r.get(), env);
-        return b->op == '+' ? l + r : l - r;
+        if (b->op == '+') return Int(l + r);
+        return Int(l - r);
     }
     return 0;
 }
 
 struct Break {};
+
+template<typename T> std::string int_to_string(T v) {
+    if (v == 0) return "0";
+    std::string s; bool neg = v < 0; if (neg) v = -v;
+    while (v) { s = char('0' + int(v % 10)) + s; v /= 10; }
+    return neg ? "-" + s : s;
+}
+
+void print_int(Int v) { std::println("{}", int_to_string(v)); }
 
 void exec(Stmt* s, Env& env) {
     if (auto* d = dynamic_cast<DeclStmt*>(s)) env.try_emplace(d->name, 0);
@@ -26,27 +35,22 @@ void exec(Stmt* s, Env& env) {
         try { while (true) exec(l->body.get(), env); } catch (Break) {}
     }
     else if (auto* b = dynamic_cast<BreakIfzStmt*>(s)) { if (eval(b->cond.get(), env) == 0) throw Break{}; }
-    else if (auto* pr = dynamic_cast<PrintStmt*>(s)) {
-        Int v = eval(pr->e.get(), env);
-        if (v == 0) { std::println("0"); return; }
-        char buf[50]; char* ptr = buf + 49; *ptr = 0;
-        bool neg = v < 0; if (neg) v = -v;
-        do { *--ptr = '0' + v % 10; v /= 10; } while (v);
-        if (neg) *--ptr = '-';
-        std::println("{}", ptr);
-    }
+    else if (auto* pr = dynamic_cast<PrintStmt*>(s)) print_int(eval(pr->e.get(), env));
 }
 
 int main(int argc, char** argv) {
     if (argc < 2) { std::println(stderr, "Usage: {} <file> [arg1] [arg2]", argv[0]); return 1; }
-    std::string src = read_file(argv[1]);
-
-    auto prog = parse_program(src);
+    auto prog = parse_program(read_file(argv[1]));
     if (!prog) { std::println(stderr, "Error: {}", prog.error()); return 1; }
 
     Env env;
-    env["arg1"] = argc > 2 ? std::atoll(argv[2]) : 0;
-    env["arg2"] = argc > 3 ? std::atoll(argv[3]) : 0;
+    if constexpr (INT_BITS > 0 && INT_BITS <= 128) {
+        env["arg1"] = argc > 2 ? std::atoll(argv[2]) : 0;
+        env["arg2"] = argc > 3 ? std::atoll(argv[3]) : 0;
+    } else {
+        env["arg1"] = argc > 2 ? Int(argv[2]) : Int(0);
+        env["arg2"] = argc > 3 ? Int(argv[3]) : Int(0);
+    }
 
     for (auto& s : *prog) {
         try { exec(s.get(), env); }

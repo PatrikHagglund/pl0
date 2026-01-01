@@ -23,7 +23,11 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - Grammars reside in `src/`.
 - pl0_0 has a grammar (13 lines) and minimal interpreter (`pl0peg0.koka`, 99 lines)
 - pl0_1 has a grammar and working interpreter (`pl0peg1.koka`, 382 lines)
-- pl0_1 has LLVM IR compiler (`pl0_1_llvm.cpp`) with i128 integers, arg1/arg2 support
+- pl0_1 has LLVM IR compiler (`pl0_1_llvm.cpp`) with configurable bit width
+- C++ interpreter/compiler support arbitrary integer widths via Boost.Multiprecision
+  - INT_BITS=0: dynamic bigint (cpp_int)
+  - INT_BITS=32/64/128: native types
+  - INT_BITS>128: Boost fixed-width (e.g., 256, 512, 1024)
 - Factorial benchmark (`bench_1_factorial.pl0`) comparing lli, clang -O0/-O3, koka
 - Started exploring semantics using Koka
 - Other levels do not have interpreters (or compilers). They are sketched with a PEG grammars and code example files.
@@ -43,6 +47,11 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - `LEDGER.md`
 
 ## Done (prune when exceeding 30 items)
+- Parameterized integer bit width via `src/pl0_1.hpp` (INT_BITS)
+  - Added Boost.Multiprecision for arbitrary widths (256, 512, etc.) and bigint (INT_BITS=0)
+  - Compiler emits runtime as string (removed `pl0_1_rt.ll`)
+  - Both interpreter and compiler use same config
+  - Tested with 64, 128, 256 bits and bigint
 - Moved Koka into podman container (no local install needed)
   - Updated Containerfile to install Koka v3.2.2
   - Updated Makefile to run Koka via container

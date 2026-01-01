@@ -21,6 +21,7 @@ The project uses a single Podman container (Fedora rawhide) with all tools:
 - g++ (C++26)
 - LLVM/Clang
 - Koka
+- Boost (Multiprecision)
 
 Rebuild the container after changes to `Containerfile`:
 ```bash
@@ -112,8 +113,20 @@ Grammars in `src/`: `pl0_0.peg` through `pl0_6.peg`
 |----------|-------|-------|
 | Koka (hand-written parser) | `pl01.koka` | AST used|
 | Koka (PEG meta-interpreter) | `peg.koka`, `pl0peg1.koka` | Single-phase parse+execute, no AST |
-| C++ interpreter | `pl0_1.cpp` | Handwritten, AST used |
-| Compiler in C++, to LLVM IR | `pl0_1_llvm.cpp` | i128 integers |
+| C++ interpreter | `pl0_1.cpp`, `pl0_1.hpp` | Handwritten, AST used |
+| Compiler in C++ | `pl0_1_compile.cpp`, `pl0_1.hpp` | C++ or LLVM IR backend |
+
+### Integer Bit Width
+
+All C++ implementations share `src/pl0_1.hpp` which defines `INT_BITS`:
+
+| INT_BITS | Type | Notes |
+|----------|------|-------|
+| 0 | Boost cpp_int | Arbitrary precision (bigint) |
+| 32, 64, 128 | Native | `int32_t`, `int64_t`, `__int128` |
+| 256, 512, ... | Boost fixed | Any width via Boost.Multiprecision |
+
+The LLVM backend requires `INT_BITS > 0` (fixed width). The C++ backend supports all modes including bigint.!
 
 ### Koka Interpreters
 
@@ -153,28 +166,31 @@ Uses a container (Fedora rawhide with g++) for C++26 features (`std::expected`).
 
 ### Compiler in C++
 
-Compiler that emits LLVM IR (`src/pl0_1_llvm.cpp`):
+Unified compiler with two backends (`src/pl0_1_compile.cpp`):
 
-- Uses 128-bit integers (`i128`) for extended range
-- Supports `arg1` and `arg2` built-in variables for command-line arguments
-- Includes `print_i128` helper for full-precision output
+- C++ backend (default): supports all INT_BITS including bigint
+- LLVM IR backend (`--llvm`): requires INT_BITS > 0
 
 ```bash
-make run-llvm           # run with lli (JIT)
-make run-llvm-native    # compile to native with clang -O3
+make run-compile        # C++ backend
+make run-llvm           # LLVM IR with lli (JIT)
+make run-llvm-native    # LLVM IR compiled to native with clang -O3
 ```
 
 Output: `7`, `1`, `8` (runs `examples/example_0.pl0`)
 
 Or manually:
 ```bash
-make pl0_1_llvm
-./pl0_1_llvm examples/bench_1_factorial.pl0 > out.ll
+make pl0_1_compile
+./pl0_1_compile examples/bench_1_factorial.pl0 > out.cpp
+g++ -std=gnu++26 -O3 out.cpp -o out && ./out 10 33
+
+./pl0_1_compile --llvm examples/bench_1_factorial.pl0 > out.ll
 lli out.ll 10 33        # 10 iterations of 33!
 clang -O3 out.ll -o out && ./out 10 33
 ```
 
-The container includes LLVM tools (`lli`, `llc`, `clang`).
+The container includes LLVM tools (`lli`, `llc`, `clang`) and Boost.
 
 ## Benchmarks
 
@@ -199,16 +215,3 @@ Example results for `2000 31`:
 | koka -O3 (PEG) | 2.4s |
 
 Note: i128 limits the sum to avoid overflow (max ~19 iterations for 33!).
-
-## Notes
-
-Koka interpreters use effect handlers for clean control flow:
-```koka
-effect loop-break
-  ctl do-break(): a
-
-fun exec-loop(e: env, body: stmt): <loop-break, div> env
-  with ctl do-break() e    // handler: break returns current env
-  val e1 = exec(e, body)
-  exec-loop(e1, body)
-```

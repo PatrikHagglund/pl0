@@ -11,35 +11,40 @@ CXXFLAGS = -std=gnu++26 -Wall -Wextra -Werror
 TARGET = pl0_1
 SRC = src/pl0_1.cpp
 
-TARGET_LLVM = pl0_1_llvm
-SRC_LLVM = src/pl0_1_llvm.cpp
+TARGET_COMPILE = pl0_1_compile
+SRC_COMPILE = src/pl0_1_compile.cpp
 
 $(TARGET): $(SRC) | .image
 	$(CXX) $(CXXFLAGS) -O3 -o $@ $<
 
-$(TARGET_LLVM): $(SRC_LLVM) | .image
+$(TARGET_COMPILE): $(SRC_COMPILE) | .image
 	$(CXX) $(CXXFLAGS) -O3 -o $@ $<
 
-all: $(TARGET) $(TARGET_LLVM)
+all: $(TARGET) $(TARGET_COMPILE)
 
 run: $(TARGET)
 	$(RUN) ./$(TARGET) examples/example_0.pl0
 
-run-llvm: $(TARGET_LLVM)
-	$(RUN) sh -c "./$(TARGET_LLVM) examples/example_0.pl0 > out.ll && lli out.ll"
+run-compile: $(TARGET_COMPILE)
+	$(RUN) sh -c "./$(TARGET_COMPILE) examples/example_0.pl0 > out.cpp && g++ -std=gnu++26 -O3 out.cpp -o out && ./out"
 
-run-llvm-native: $(TARGET_LLVM)
-	$(RUN) sh -c "./$(TARGET_LLVM) examples/example_0.pl0 > out.ll && clang -Wno-override-module -O3 out.ll -o out && ./out"
+run-llvm: $(TARGET_COMPILE)
+	$(RUN) sh -c "./$(TARGET_COMPILE) --llvm examples/example_0.pl0 > out.ll && lli out.ll"
+
+run-llvm-native: $(TARGET_COMPILE)
+	$(RUN) sh -c "./$(TARGET_COMPILE) --llvm examples/example_0.pl0 > out.ll && clang -Wno-override-module -O3 out.ll -o out && ./out"
 
 clean:
-	rm -rf $(TARGET) $(TARGET_LLVM) out.ll out out-O0 src/.koka src/pl0peg1 src/pl01
+	rm -rf $(TARGET) $(TARGET_COMPILE) out.ll out out.cpp out-O0 src/.koka src/pl0peg1 src/pl01
 
 BENCH_1 = examples/bench_1_factorial.pl0
 BENCH_1_ARGS = 2000 31
 RUN = podman run $(RUN_OPTS) $(IMAGE)
 
-bench-1: $(TARGET) $(TARGET_LLVM) src/pl0peg1 src/pl01
-	@$(RUN) sh -c "./$(TARGET_LLVM) $(BENCH_1) > out.ll"
+bench-1: $(TARGET) $(TARGET_COMPILE) src/pl0peg1 src/pl01
+	@$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && g++ -std=gnu++26 -O3 out.cpp -o out_cpp"
+	@echo "=== C++ backend -O3 ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_1_ARGS)"
+	@$(RUN) sh -c "./$(TARGET_COMPILE) --llvm $(BENCH_1) > out.ll"
 	@echo "=== lli (JIT) ===" && $(RUN) sh -c "time lli out.ll $(BENCH_1_ARGS)" || true
 	@echo "=== clang -O0 ===" && $(RUN) sh -c "clang -Wno-override-module -O0 out.ll -o out-O0 && time ./out-O0 $(BENCH_1_ARGS)"
 	@echo "=== clang -O3 ===" && $(RUN) sh -c "clang -Wno-override-module -O3 out.ll -o out && time ./out $(BENCH_1_ARGS)"
