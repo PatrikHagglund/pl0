@@ -24,7 +24,7 @@ fun strip-comments(s: string): string
 fun run(input: string, init-env: pl01-types/env): <console, div> pl01-types/env
   match parse(input.strip-comments.slice, pprogram)
     ParseOk(stmts, _) ->
-      with ctl do-break() []
+      with ctl do-break(env) env
       exec-all(init-env, stmts)
     ParseError(msg, _) ->
       println("Parse error: " ++ msg)

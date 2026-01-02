@@ -31,9 +31,9 @@ relop           = ("==" / "!=" / "<=" / ">=" / "<" / ">") _
 int_lit         = digit+ _
 
 // Lexical elements
-keyword         = ("case" / "loop" / "break" / "print") !alnum
-ident           = !keyword letter alnum* _
-alnum           = [a-zA-Z0-9]
+keyword         = ("case" / "loop" / "break" / "print") !idchar
+ident           = !keyword letter idchar* _
+idchar          = [a-zA-Z0-9_]
 letter          = [a-zA-Z]
 digit           = [0-9]
 

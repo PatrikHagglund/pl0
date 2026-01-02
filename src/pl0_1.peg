@@ -30,9 +30,9 @@ atom            = int_lit / ident / "(" _ expression ")" _  @atom
 int_lit         = digit+ _  @int_lit
 
 // Lexical elements
-keyword         = ("loop" / "break_ifz" / "print") !alnum
-ident           = !keyword letter alnum* _  @ident
-alnum           = [a-zA-Z0-9]
+keyword         = ("loop" / "break_ifz" / "print") !idchar
+ident           = !keyword letter idchar* _  @ident
+idchar          = [a-zA-Z0-9_]
 letter          = [a-zA-Z]
 digit           = [0-9]
 

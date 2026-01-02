@@ -84,10 +84,10 @@ params          = param ("," _ param)* ("," _)?
 param           = ident _ ":" _ type_expr
 
 // Lexical elements
-keyword         = ("case" / "loop" / "break" / "true" / "false" / "type" / "int" / "bool" / "unit" / "print") !alnum
-ident           = !keyword letter alnum* _
-wildcard        = "_" !alnum _
-alnum           = [a-zA-Z0-9]
+keyword         = ("case" / "loop" / "break" / "true" / "false" / "type" / "int" / "bool" / "unit" / "print") !idchar
+ident           = !keyword letter idchar* _
+wildcard        = "_" !idchar _
+idchar          = [a-zA-Z0-9_]
 letter          = [a-zA-Z]
 digit           = [0-9]
 

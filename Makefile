@@ -3,6 +3,7 @@ RUN_OPTS = --rm -v $(PWD):/src:Z -w /src
 RUN = podman run $(RUN_OPTS) $(IMAGE)
 CXX = $(RUN) g++
 KOKA = $(RUN) koka
+FILE ?= examples/example_0.pl0
 
 # Note: timeouts must be placed *inside* the container to be effective:
 #   $(RUN) timeout 5 ./pl0_1 ...    # works
@@ -75,7 +76,7 @@ src/pl01: src/pl01.koka src/pl01-types.koka src/pl01-parser.koka src/pl01-eval.k
 	chmod +x src/pl01
 
 koka-pl0: | .image
-	$(RUN) koka -e src/pl01.koka -- examples/example_0.pl0
+	$(RUN) sh -c "koka -l src/pl01-types.koka && koka -l src/pl01-parser.koka && koka -l src/pl01-eval.koka && koka -e src/pl01.koka -- $(FILE)"
 
 koka-peg: | .image
 	$(RUN) sh -c "koka --compile src/peg.koka && koka -e src/pl0peg1.koka -- examples/example_0.pl0"

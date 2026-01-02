@@ -10,7 +10,7 @@ fun pws(): parse ()
 
 fun pident(): parse string
   val c = alpha()
-  val cs = many({ alpha-num() })
+  val cs = many({ choose([{ char('_') }, { alpha-num() }]) })
   c.string ++ cs.string
 
 fun pexpr(): <parse, div> expr

@@ -4,7 +4,7 @@ import src/pl01-types
 
 // Effect for break
 pub effect loop-break
-  ctl do-break(): a
+  ctl do-break(env: env): a
 
 // Evaluator
 pub fun eval(e: env, ex: expr): int
@@ -22,7 +22,7 @@ pub fun exec(e: env, s: stmt): <console, loop-break, div> env
     SBlock(ss) -> exec-all(e, ss)
     SLoop(body) -> exec-loop(e, body)
     SBreakIfz(cond) -> 
-      if eval(e, cond) == 0 then do-break()
+      if eval(e, cond) == 0 then do-break(e)
       e
     SPrint(ex) ->
       println(eval(e, ex).show)
@@ -34,6 +34,6 @@ pub fun exec-all(e: env, ss: list<stmt>): <console, loop-break, div> env
     Cons(s, rest) -> exec-all(exec(e, s), rest)
 
 pub fun exec-loop(e: env, body: stmt): <console, loop-break, div> env
-  with ctl do-break() e
+  with ctl do-break(env) env
   val e1 = exec(e, body)
   exec-loop(e1, body)

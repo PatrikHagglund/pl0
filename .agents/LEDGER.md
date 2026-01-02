@@ -16,7 +16,7 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
     - This example file should: 1) Demonstrate new functionality if not done by step 2. 2) Demonstrate how to express/encode features from the next level using only the current level's primitives (if possible).
 
 ## Open questions (UNCONFIRMED if needed)
-- BUG: pl01.koka interpreter has issue with `break_ifz 0` pattern — execution stops after first print in example_1.pl0. Investigate later.
+- (none)
 
 ## State
 - Files organized into `src`, `examples`, `docs`, `test`, and `old`.
@@ -33,7 +33,7 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - Other levels do not have interpreters (or compilers). They are sketched with a PEG grammars and code example files.
 
 ## Next
-- Check the open question above.
+- Make a test target tha verifies all examples for all interpreters/compilers that should work.
 - Check Makefile rules for proper dependency handling
 - Why such large difference in performance between C++ and LLVM IR backends when using bigints? (Insufficient link-time optimization?)
 - Revisit the use of break_ifz vs when loops for some of the examples. Which one give the least amount of code?
@@ -60,6 +60,14 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - `LEDGER.md`
 
 ## Done (prune when exceeding 30 items)
+- Fixed pl0peg1.koka bugs:
+  - `act-ident` didn't include underscores (e.g., `d1_zero` parsed as `d1`)
+  - `act-int-lit` failed when trailing comments present (e.g., `4 // x` parsed as 0)
+- Updated all PEG grammars (pl0_0 through pl0_6) to allow underscores in identifiers
+- Fixed pl01.koka interpreter bugs:
+  - Parser didn't accept underscores in identifiers (e.g., `is_zero`)
+  - `do-break` effect handler returned stale environment instead of current one
+  - Updated Makefile `koka-pl0` target to compile library modules and accept FILE variable
 - Added ARG_COUNT configuration parameter to `src/pl0_1.hpp`
   - Controls number of built-in arg<N> variables (default 2)
   - Updated interpreter, C++ backend, and LLVM backend to use loops
