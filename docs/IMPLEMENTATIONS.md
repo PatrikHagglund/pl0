@@ -69,14 +69,20 @@ make run
 
 ## Compilers
 
-### `pl0_1_compile.cpp` — C++ Compiler
+### `pl0_1_compile.cpp` — Unified C++/LLVM Compiler
 
-Two backends from a single compiler:
+Two backends from a single unified code generator:
 
 | Backend | Output | Bigint Support |
 |---------|--------|----------------|
 | C++ (default) | `.cpp` file | Via Boost headers |
-| LLVM IR (`--llvm`) | `.ll` file | Via `pl0_1_rt_bigint.bc` |
+| LLVM IR (`--llvm`) | `.ll` file | Via `pl0_1_rt_bigint_stack.ll` |
+
+```
+src/
+  pl0_1_compile.cpp   — Unified code generator (112 lines)
+  pl0_1_preamble.hpp  — Runtime preambles for both backends
+```
 
 **C++ backend:**
 ```bash
@@ -87,41 +93,34 @@ g++ -std=gnu++26 -O3 out.cpp -o out
 **LLVM backend:**
 ```bash
 ./pl0_1_compile --llvm prog.pl0 > prog.ll
-llvm-link prog.ll src/pl0_1_rt_bigint.ll -S -o out.ll
-clang++ -O3 out.ll -o out        # native
-lli -load /lib64/libstdc++.so.6 out.ll  # JIT
+llvm-link prog.ll src/pl0_1_rt_bigint_stack.ll -S -o out.ll
+clang -O3 out.ll -o out   # native
+lli out.ll                 # JIT
 ```
 
-### LLVM Bigint Runtime (`src/pl0_1_rt_bigint.ll`)
+### Stack-Based Bigint Runtime (`src/pl0_1_rt_bigint_stack.ll`)
 
-When `INT_BITS=0` (bigint), the LLVM backend uses an external runtime for arbitrary-precision arithmetic. The runtime is compiled from C++ using Boost.Multiprecision.
+When `INT_BITS=0` (bigint), the LLVM backend uses a stack-based runtime — no heap allocation. All bigint buffers are allocated via `alloca`.
 
-**Exported functions:**
+**Key functions:**
 
 | Function | Purpose |
 |----------|---------|
-| `bi_new(i64) → ptr` | Allocate new bigint from i64 |
-| `bi_from_str(ptr) → ptr` | Parse string to bigint |
-| `bi_add(ptr, ptr) → ptr` | Add, return new allocation |
-| `bi_sub(ptr, ptr) → ptr` | Subtract, return new allocation |
-| `bi_neg(ptr) → ptr` | Negate, return new allocation |
-| `bi_is_zero(ptr) → i32` | Test if zero (for `break_ifz`) |
+| `bi_init(ptr, i64)` | Initialize buffer with i64 value |
+| `bi_copy(ptr, ptr)` | Copy value between buffers |
+| `bi_add(ptr, ptr, ptr)` | out = a + b |
+| `bi_sub(ptr, ptr, ptr)` | out = a - b |
+| `bi_neg(ptr, ptr)` | out = -a |
+| `bi_add_size(ptr, ptr) → i32` | Limbs needed for a + b |
+| `bi_sub_size(ptr, ptr) → i32` | Limbs needed for a - b |
+| `bi_buf_size(i32) → i32` | Bytes needed for N limbs |
+| `bi_is_zero(ptr) → i32` | Test if zero |
 | `bi_print(ptr)` | Print to stdout |
-| `bi_set(ptr, ptr)` | Copy value in-place |
-| `bi_set_i(ptr, i64)` | Set from i64 in-place |
-| `bi_add_to(ptr, ptr)` | Add in-place (`dst += src`) |
-| `bi_sub_to(ptr, ptr)` | Subtract in-place (`dst -= src`) |
-| `bi_neg_in(ptr)` | Negate in-place |
+| `bi_from_str(ptr, ptr)` | Parse string into buffer |
 
-**In-place optimization:** The compiler uses `bi_set`/`bi_add_to`/`bi_sub_to` for assignments when safe (destination doesn't appear multiple times in RHS), reducing heap allocations in hot loops.
+**Stack management:** The compiler uses `llvm.stacksave`/`llvm.stackrestore` around loops to prevent stack exhaustion from temporary allocations.
 
-**System dependencies:**
-- `operator new` / `operator delete` — heap allocation
-- `std::cout` — printing
-- `std::string` — argument parsing
-- `abort` — error handling
-
-**LTO note:** Link-time optimization (`-flto` or `opt -O3`) provides minimal benefit (~3%) because Boost's `cpp_int` inherently requires heap allocation for arbitrary-length storage. The ~4x gap vs C++ backend is due to the C++ compiler seeing the full Boost internals and reusing stack space, while LLVM sees opaque runtime calls.
+**No external dependencies:** The runtime uses only C-style I/O (`putchar`), no C++ stdlib.
 
 ```bash
 make run-compile      # C++ backend
@@ -150,14 +149,15 @@ make bench-1                        # default: 2000 iterations of 31!
 make bench-1 BENCH_1_ARGS="100 20"  # custom args
 ```
 
-Example results for `2000 31` (bigint):
+Example results for `2000 31` (bigint, INT_BITS=0):
 
 | Implementation | Time |
 |----------------|------|
-| C++ backend -O3 | 17ms |
-| LLVM IR backend -O3 | 64ms |
-| LLVM IR backend -O0 | 104ms |
-| LLVM IR backend lli (JIT) | 194ms |
+| C++ backend | 22ms |
+| LLVM backend | 25ms |
+| LLVM lli (JIT) | 84ms |
 | C++ interpreter | 0.7s |
 | Koka interpreter | 1.9s |
-| Koka interpreter (PEG) | 2.3s |
+| Koka PEG interpreter | 2.3s |
+
+All compiled code uses `-O3` optimization.
