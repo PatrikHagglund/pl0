@@ -44,7 +44,7 @@ run-llvm-native: $(TARGET_COMPILE) src/pl0_1_rt_bigint_stack.ll
 	$(RUN) sh -c "./pl0_1_compile --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && clang -Wno-override-module -O3 out.ll -o out && ./out"
 
 src/pl0_1_rt_bigint_stack.ll: src/pl0_1_rt_bigint_stack.cpp | .image
-	$(RUN) clang++ -std=c++26 -S -emit-llvm -O2 $< -o $@
+	$(RUN) clang++ -std=c++26 -S -emit-llvm -O3 $< -o $@
 
 clean:
 	rm -rf $(TARGET) $(TARGET_COMPILE) out.ll out out.cpp out-O0 src/.koka src/pl0peg1 src/pl01

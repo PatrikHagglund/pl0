@@ -122,6 +122,11 @@ When `INT_BITS=0` (bigint), the LLVM backend uses a stack-based runtime — no h
 
 **No external dependencies:** The runtime uses only C-style I/O (`putchar`), no C++ stdlib.
 
+**Performance note:** For optimal code generation, prefer narrow types in C++:
+- Use `unsigned` types when values are non-negative (e.g., `uint32_t` for sizes)
+- Use `bool` instead of `int` for true/false values
+- Use `[[assume(expr)]]` to communicate additional range constraints to the optimizer
+
 ```bash
 make run-compile      # C++ backend
 make run-llvm         # LLVM JIT
@@ -153,11 +158,11 @@ Example results for `2000 31` (bigint, INT_BITS=0):
 
 | Implementation | Time |
 |----------------|------|
-| C++ backend | 22ms |
-| LLVM backend | 25ms |
-| LLVM lli (JIT) | 84ms |
+| C++ backend | 17ms |
+| LLVM backend | 17ms |
+| LLVM lli (JIT) | 77ms |
 | C++ interpreter | 0.7s |
-| Koka interpreter | 1.9s |
-| Koka PEG interpreter | 2.3s |
+| Koka interpreter | 2.5s |
+| Koka PEG interpreter | 2.4s |
 
 All compiled code uses `-O3` optimization.
