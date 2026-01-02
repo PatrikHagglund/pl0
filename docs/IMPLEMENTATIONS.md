@@ -100,7 +100,26 @@ lli out.ll                 # JIT
 
 ### Stack-Based Bigint Runtime (`src/pl0_1_rt_bigint_stack.ll`)
 
-When `INT_BITS=0` (bigint), the LLVM backend uses a stack-based runtime — no heap allocation. All bigint buffers are allocated via `alloca`.
+When `INT_BITS=0` (bigint), the LLVM backend uses a custom runtime with:
+- **Heap allocation for variables** — unlimited integer size, persists across loop iterations
+- **Stack allocation for temporaries** — reclaimed after each assignment via `stacksave`/`stackrestore`
+
+**Memory management strategy:**
+
+Each variable has a pointer and a capacity:
+```llvm
+%x = alloca ptr       ; pointer to current buffer
+%x_cap = alloca i32   ; capacity in bytes
+```
+
+On assignment:
+1. Evaluate expression (temporaries on stack)
+2. Compute required size
+3. If fits in current capacity → reuse buffer
+4. Otherwise → malloc new buffer, free old, update capacity
+5. Restore stack (reclaims temporaries)
+
+This avoids malloc/free on most assignments while allowing unlimited growth.
 
 **Key functions:**
 
@@ -111,6 +130,7 @@ When `INT_BITS=0` (bigint), the LLVM backend uses a stack-based runtime — no h
 | `bi_add(ptr, ptr, ptr)` | out = a + b |
 | `bi_sub(ptr, ptr, ptr)` | out = a - b |
 | `bi_neg(ptr, ptr)` | out = -a |
+| `bi_size(ptr) → i32` | Current limb count |
 | `bi_add_size(ptr, ptr) → i32` | Limbs needed for a + b |
 | `bi_sub_size(ptr, ptr) → i32` | Limbs needed for a - b |
 | `bi_buf_size(i32) → i32` | Bytes needed for N limbs |
@@ -118,14 +138,7 @@ When `INT_BITS=0` (bigint), the LLVM backend uses a stack-based runtime — no h
 | `bi_print(ptr)` | Print to stdout |
 | `bi_from_str(ptr, ptr)` | Parse string into buffer |
 
-**Stack management:** The compiler uses `llvm.stacksave`/`llvm.stackrestore` around loops to prevent stack exhaustion from temporary allocations.
-
-**No external dependencies:** The runtime uses only C-style I/O (`putchar`), no C++ stdlib.
-
-**Performance note:** For optimal code generation, prefer narrow types in C++:
-- Use `unsigned` types when values are non-negative (e.g., `uint32_t` for sizes)
-- Use `bool` instead of `int` for true/false values
-- Use `[[assume(expr)]]` to communicate additional range constraints to the optimizer
+**No external dependencies:** The runtime uses only C-style I/O (`putchar`) and `malloc`/`free`.
 
 ```bash
 make run-compile      # C++ backend
@@ -159,13 +172,13 @@ Example results for `2000 31` (bigint, INT_BITS=0):
 | Implementation | Time |
 |----------------|------|
 | C++ backend | 17ms |
-| LLVM backend | 17ms |
-| LLVM lli (JIT) | 77ms |
+| LLVM backend | 29ms |
+| LLVM lli (JIT) | 90ms |
 | C++ interpreter | 0.7s |
-| Koka interpreter | 2.5s |
-| Koka PEG interpreter | 2.4s |
+| Koka interpreter | 1.9s |
+| Koka PEG interpreter | 2.3s |
 
-All compiled code uses `-O3` optimization.
+The LLVM backend is slightly slower than C++ due to the explicit capacity-check logic; Boost's `cpp_int` has this optimized and inlined.
 
 ## Code Style
 

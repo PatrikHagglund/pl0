@@ -1,4 +1,15 @@
 // PL/0 Level 1 Compiler - Unified C++ and LLVM IR backend
+//
+// Two backends from one code generator:
+//   - C++ backend (default): emits C++ using Boost.Multiprecision for bigint
+//   - LLVM backend (--llvm): emits LLVM IR, links with pl0_1_rt_bigint_stack.ll
+//
+// Bigint memory management (LLVM backend, INT_BITS=0):
+//   - Variables: heap-allocated (malloc/free), with capacity tracking
+//     Each var has a ptr and a cap; reuses buffer if new value fits
+//   - Temporaries: stack-allocated (alloca), reclaimed via stacksave/restore
+//   This gives unlimited integer size with minimal allocation overhead.
+//
 #include "pl0_1.hpp"
 #include "pl0_1_preamble.hpp"
 #include <cstring>
@@ -55,8 +66,11 @@ struct Gen {
         if (auto *v = dynamic_cast<VarExpr *>(x)) {
             if (!L)
                 return v->name;
-            if (bi)
-                return f("%{}", v->name);
+            if (bi) {
+                auto r = tmp();
+                p("  {} = load ptr, ptr %{}\n", r, v->name);
+                return r;
+            }
             auto r = tmp();
             p("  {} = load {}, ptr %{}\n", r, I, v->name);
             return r;
@@ -104,28 +118,46 @@ struct Gen {
                     std::print("  ");
         };
         if (auto *a = dynamic_cast<AssignStmt *>(x)) {
-            auto v = e(a->e.get());
             ind();
-            if (L && bi)
-                p("  call void @bi_copy(ptr %{}, ptr {})\n", a->name, v);
-            else if (L)
-                p("  store {} {}, ptr %{}\n", I, v, a->name);
-            else
-                p("{} = {};\n", a->name, v);
+            if (L && bi) {
+                auto sp = tmp();
+                p("  {} = call ptr @llvm.stacksave.p0()\n", sp);
+                auto v = e(a->e.get());
+                auto sz = tmp(), bytes = tmp(), cap = tmp(), need = tmp();
+                auto old = tmp(), buf = tmp(), newbuf = tmp();
+                int reuse = lbl++, alloc = lbl++, done = lbl++;
+                p("  {} = call i32 @bi_size(ptr {})\n", sz, v);
+                p("  {} = call i32 @bi_buf_size(i32 {})\n", bytes, sz);
+                p("  {} = load i32, ptr %{}_cap\n", cap, a->name);
+                p("  {} = icmp ule i32 {}, {}\n", need, bytes, cap);
+                p("  {} = load ptr, ptr %{}\n", old, a->name);
+                p("  br i1 {}, label %L{}, label %L{}\n", need, reuse, alloc);
+                p("L{}:\n", reuse);
+                p("  call void @bi_copy(ptr {}, ptr {})\n", old, v);
+                p("  br label %L{}\n", done);
+                p("L{}:\n", alloc);
+                p("  {} = call ptr @malloc(i32 {})\n", newbuf, bytes);
+                p("  call void @bi_copy(ptr {}, ptr {})\n", newbuf, v);
+                p("  call void @free(ptr {})\n", old);
+                p("  store ptr {}, ptr %{}\n", newbuf, a->name);
+                p("  store i32 {}, ptr %{}_cap\n", bytes, a->name);
+                p("  br label %L{}\n", done);
+                p("L{}:\n", done);
+                p("  call void @llvm.stackrestore.p0(ptr {})\n", sp);
+            } else {
+                auto v = e(a->e.get());
+                if (L)
+                    p("  store {} {}, ptr %{}\n", I, v, a->name);
+                else
+                    p("{} = {};\n", a->name, v);
+            }
         } else if (auto *b = dynamic_cast<BlockStmt *>(x))
             for (auto &y : b->stmts)
                 s(y.get(), d);
         else if (auto *l = dynamic_cast<LoopStmt *>(x)) {
             int h = lbl++, z = lbl++;
             ex.push_back(z);
-            if (L && bi) {
-                auto sp = tmp();
-                p("  {} = call ptr @llvm.stacksave.p0()\n", sp);
-                p("  br label %L{}\nL{}:\n", h, h);
-                s(l->body.get(), d);
-                p("  call void @llvm.stackrestore.p0(ptr {})\n", sp);
-                p("  br label %L{}\nL{}:\n", h, z);
-            } else if (L) {
+            if (L) {
                 p("  br label %L{}\nL{}:\n", h, h);
                 s(l->body.get(), d);
                 p("  br label %L{}\nL{}:\n", h, z);
@@ -177,8 +209,12 @@ struct Gen {
             if (bi) {
                 p("{}\n", LLVM_BIGINT_PREAMBLE);
                 for (auto &v : vars) {
-                    p("  %{} = alloca [520 x i8]\n", v);
-                    p("  call void @bi_init(ptr %{}, i64 0)\n", v);
+                    p("  %{} = alloca ptr\n", v);
+                    p("  %{}_cap = alloca i32\n", v);
+                    p("  %{}_init = call ptr @malloc(i32 24)\n", v);
+                    p("  call void @bi_init(ptr %{}_init, i64 0)\n", v);
+                    p("  store ptr %{}_init, ptr %{}\n", v, v);
+                    p("  store i32 24, ptr %{}_cap\n", v);
                 }
                 emit_args_llvm_bigint();
             } else {

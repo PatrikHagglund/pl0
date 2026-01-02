@@ -72,6 +72,7 @@ uint32_t bi_sub_size(const BigInt* a, const BigInt* b) {
     return std::max(a->size, b->size) + 1;
 }
 uint32_t bi_neg_size(const BigInt* a) { return a->size; }
+uint32_t bi_size(const BigInt* a) { return a->size; }
 
 void bi_add(BigInt* out, const BigInt* a, const BigInt* b) {
     if (a->neg == b->neg) {

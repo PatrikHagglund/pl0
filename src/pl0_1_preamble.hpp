@@ -3,12 +3,13 @@
 #include "pl0_1.hpp"
 
 // LLVM IR preamble for bigint (INT_BITS=0)
-constexpr auto LLVM_BIGINT_PREAMBLE = R"(; Stack-based bigint runtime
+constexpr auto LLVM_BIGINT_PREAMBLE = R"(; Bigint runtime (heap vars, stack temps)
 declare void @bi_init(ptr, i64)
 declare void @bi_copy(ptr, ptr)
 declare void @bi_add(ptr, ptr, ptr)
 declare void @bi_sub(ptr, ptr, ptr)
 declare void @bi_neg(ptr, ptr)
+declare i32 @bi_size(ptr)
 declare i32 @bi_add_size(ptr, ptr)
 declare i32 @bi_sub_size(ptr, ptr)
 declare i32 @bi_neg_size(ptr)
@@ -18,6 +19,8 @@ declare void @bi_print(ptr)
 declare void @bi_from_str(ptr, ptr)
 declare ptr @llvm.stacksave.p0()
 declare void @llvm.stackrestore.p0(ptr)
+declare ptr @malloc(i32)
+declare void @free(ptr)
 
 define i32 @main(i32 %argc, ptr %argv) {
 entry:)";
@@ -65,10 +68,15 @@ inline void cpp_preamble() {
 // Emit argument parsing
 inline void emit_args_llvm_bigint() {
     for (int i = 1; i <= ARG_COUNT; ++i) {
-        std::print("  %arg{} = alloca [520 x i8]\n", i);
+        std::print("  %arg{0} = alloca ptr\n  %arg{0}_cap = alloca i32\n", i);
         std::print("  %has{0} = icmp sgt i32 %argc, {0}\n  br i1 %has{0}, label %read{0}, label %def{0}\nread{0}:\n", i);
-        std::print("  %p{0} = getelementptr ptr, ptr %argv, i32 {0}\n  %s{0} = load ptr, ptr %p{0}\n  call void @bi_from_str(ptr %arg{0}, ptr %s{0})\n  br label %done{0}\ndef{0}:\n", i);
-        std::print("  call void @bi_init(ptr %arg{}, i64 0)\n  br label %done{}\ndone{}:\n", i, i, i);
+        std::print("  %p{0} = getelementptr ptr, ptr %argv, i32 {0}\n  %s{0} = load ptr, ptr %p{0}\n", i);
+        std::print("  %tmp{0} = alloca [520 x i8]\n  call void @bi_from_str(ptr %tmp{0}, ptr %s{0})\n", i);
+        std::print("  %sz{0} = call i32 @bi_size(ptr %tmp{0})\n  %bytes{0} = call i32 @bi_buf_size(i32 %sz{0})\n", i);
+        std::print("  %buf{0} = call ptr @malloc(i32 %bytes{0})\n  call void @bi_copy(ptr %buf{0}, ptr %tmp{0})\n", i);
+        std::print("  store ptr %buf{0}, ptr %arg{0}\n  store i32 %bytes{0}, ptr %arg{0}_cap\n  br label %done{0}\ndef{0}:\n", i);
+        std::print("  %def_buf{0} = call ptr @malloc(i32 24)\n  call void @bi_init(ptr %def_buf{0}, i64 0)\n", i);
+        std::print("  store ptr %def_buf{0}, ptr %arg{0}\n  store i32 24, ptr %arg{0}_cap\n  br label %done{0}\ndone{0}:\n", i);
     }
 }
 
