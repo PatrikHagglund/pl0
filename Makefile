@@ -16,14 +16,15 @@ CXXFLAGS = -std=gnu++26 -Wall -Wextra -Werror
 
 TARGET = pl0_1
 SRC = src/pl0_1.cpp
+HDR = src/pl0_1.hpp
 
 TARGET_COMPILE = pl0_1_compile
 SRC_COMPILE = src/pl0_1_compile.cpp
 
-$(TARGET): $(SRC) | .image
+$(TARGET): $(SRC) $(HDR) | .image
 	$(CXX) $(CXXFLAGS) -O3 -o $@ $<
 
-$(TARGET_COMPILE): $(SRC_COMPILE) | .image
+$(TARGET_COMPILE): $(SRC_COMPILE) $(HDR) | .image
 	$(CXX) $(CXXFLAGS) -O3 -o $@ $<
 
 all: $(TARGET) $(TARGET_COMPILE)
@@ -84,4 +85,54 @@ koka-peg: | .image
 koka-peg-test: | .image
 	$(RUN) koka -e test/peg_test.koka
 
-.PHONY: run run-llvm run-llvm-native clean bench-1 koka-pl0 koka-peg koka-peg-test
+# Test target: verify all examples across all interpreters/compilers
+# Expected outputs use newlines (heredoc style)
+test: $(TARGET) $(TARGET_COMPILE) src/pl0_1_rt_bigint.bc src/pl0peg1 src/pl01
+	@$(RUN) sh -c '\
+	pass=0; fail=0; \
+	check() { \
+	  name="$$1"; cmd="$$2"; expected="$$3"; \
+	  actual=$$(eval "$$cmd" 2>&1 | grep -E "^-?[0-9]+$$") || { echo "FAIL $$name (error)"; fail=$$((fail+1)); return; }; \
+	  if [ "$$actual" = "$$expected" ]; then echo "PASS $$name"; pass=$$((pass+1)); \
+	  else echo "FAIL $$name"; printf "  expected: %s\n" "$$expected" | head -1; printf "  actual: %s\n" "$$actual" | head -1; fail=$$((fail+1)); fi; \
+	}; \
+	./$(TARGET_COMPILE) examples/example_0.pl0 > /tmp/out.cpp && g++ -std=gnu++26 -O3 /tmp/out.cpp -o /tmp/out_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && clang++ -Wno-override-module -O3 out.ll -o /tmp/out_llvm; \
+	./$(TARGET_COMPILE) examples/example_1.pl0 > /tmp/out1.cpp && g++ -std=gnu++26 -O3 /tmp/out1.cpp -o /tmp/out1_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/example_1.pl0 > /tmp/prog1.ll && llvm-link /tmp/prog1.ll src/pl0_1_rt_bigint.bc -S -o /tmp/out1.ll && clang++ -Wno-override-module -O3 /tmp/out1.ll -o /tmp/out1_llvm; \
+	./$(TARGET_COMPILE) examples/bench_1_factorial.pl0 > /tmp/fact.cpp && g++ -std=gnu++26 -O3 /tmp/fact.cpp -o /tmp/fact_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/bench_1_factorial.pl0 > /tmp/fact.ll && llvm-link /tmp/fact.ll src/pl0_1_rt_bigint.bc -S -o /tmp/factll.ll && clang++ -Wno-override-module -O3 /tmp/factll.ll -o /tmp/fact_llvm; \
+	./$(TARGET_COMPILE) examples/collatz_1.pl0 > /tmp/coll.cpp && g++ -std=gnu++26 -O3 /tmp/coll.cpp -o /tmp/coll_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/collatz_1.pl0 > /tmp/coll.ll && llvm-link /tmp/coll.ll src/pl0_1_rt_bigint.bc -S -o /tmp/collll.ll && clang++ -Wno-override-module -O3 /tmp/collll.ll -o /tmp/coll_llvm; \
+	./$(TARGET_COMPILE) examples/gcd_1.pl0 > /tmp/gcd.cpp && g++ -std=gnu++26 -O3 /tmp/gcd.cpp -o /tmp/gcd_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/gcd_1.pl0 > /tmp/gcd.ll && llvm-link /tmp/gcd.ll src/pl0_1_rt_bigint.bc -S -o /tmp/gcdll.ll && clang++ -Wno-override-module -O3 /tmp/gcdll.ll -o /tmp/gcd_llvm; \
+	E0="7\n1\n8"; E1="6\n12\n3\n2"; COLL="5\n16\n8\n4\n2\n1"; \
+	check "example_0 cpp-interp" "./$(TARGET) examples/example_0.pl0" "$$(printf "$$E0")"; \
+	check "example_0 cpp-backend" "/tmp/out_cpp" "$$(printf "$$E0")"; \
+	check "example_0 llvm-backend" "/tmp/out_llvm" "$$(printf "$$E0")"; \
+	check "example_0 koka" "./src/pl01 examples/example_0.pl0" "$$(printf "$$E0")"; \
+	check "example_0 koka-peg" "./src/pl0peg1 examples/example_0.pl0" "$$(printf "$$E0")"; \
+	check "example_1 cpp-interp" "./$(TARGET) examples/example_1.pl0" "$$(printf "$$E1")"; \
+	check "example_1 cpp-backend" "/tmp/out1_cpp" "$$(printf "$$E1")"; \
+	check "example_1 llvm-backend" "/tmp/out1_llvm" "$$(printf "$$E1")"; \
+	check "example_1 koka" "./src/pl01 examples/example_1.pl0" "$$(printf "$$E1")"; \
+	check "example_1 koka-peg" "./src/pl0peg1 examples/example_1.pl0" "$$(printf "$$E1")"; \
+	check "factorial cpp-interp" "./$(TARGET) examples/bench_1_factorial.pl0 1 5" "120"; \
+	check "factorial cpp-backend" "/tmp/fact_cpp 1 5" "120"; \
+	check "factorial llvm-backend" "/tmp/fact_llvm 1 5" "120"; \
+	check "factorial koka" "./src/pl01 examples/bench_1_factorial.pl0 1 5" "120"; \
+	check "factorial koka-peg" "./src/pl0peg1 examples/bench_1_factorial.pl0 1 5" "120"; \
+	check "collatz cpp-interp" "./$(TARGET) examples/collatz_1.pl0 5" "$$(printf "$$COLL")"; \
+	check "collatz cpp-backend" "/tmp/coll_cpp 5" "$$(printf "$$COLL")"; \
+	check "collatz llvm-backend" "/tmp/coll_llvm 5" "$$(printf "$$COLL")"; \
+	check "collatz koka" "./src/pl01 examples/collatz_1.pl0 5" "$$(printf "$$COLL")"; \
+	check "collatz koka-peg" "./src/pl0peg1 examples/collatz_1.pl0 5" "$$(printf "$$COLL")"; \
+	check "gcd cpp-interp" "./$(TARGET) examples/gcd_1.pl0 48 18" "6"; \
+	check "gcd cpp-backend" "/tmp/gcd_cpp 48 18" "6"; \
+	check "gcd llvm-backend" "/tmp/gcd_llvm 48 18" "6"; \
+	check "gcd koka" "./src/pl01 examples/gcd_1.pl0 48 18" "6"; \
+	check "gcd koka-peg" "./src/pl0peg1 examples/gcd_1.pl0 48 18" "6"; \
+	echo ""; echo "Results: $$pass passed, $$fail failed"; \
+	[ $$fail -eq 0 ]'
+
+.PHONY: run run-llvm run-llvm-native clean bench-1 koka-pl0 koka-peg koka-peg-test test

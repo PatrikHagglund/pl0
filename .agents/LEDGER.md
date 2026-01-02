@@ -33,8 +33,6 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - Other levels do not have interpreters (or compilers). They are sketched with a PEG grammars and code example files.
 
 ## Next
-- Make a test target tha verifies all examples for all interpreters/compilers that should work.
-- Check Makefile rules for proper dependency handling
 - Why such large difference in performance between C++ and LLVM IR backends when using bigints? (Insufficient link-time optimization?)
 - Revisit the use of break_ifz vs when loops for some of the examples. Which one give the least amount of code?
 - How to apply the Language Implementation Configuration parameters in pl0_1.hpp to the Koka interpreters?
@@ -60,6 +58,11 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - `LEDGER.md`
 
 ## Done (prune when exceeding 30 items)
+- Fixed Makefile dependency handling: added `src/pl0_1.hpp` as dependency for C++ targets
+- Added `make test` target: verifies 5 examples across 5 implementations (25 tests)
+  - Tests: example_0, example_1, factorial, collatz, gcd
+  - Implementations: C++ interpreter, C++ backend, LLVM backend, Koka, Koka-PEG
+  - Filters numeric output to handle debug messages from koka-peg
 - Fixed pl0peg1.koka bugs:
   - `act-ident` didn't include underscores (e.g., `d1_zero` parsed as `d1`)
   - `act-int-lit` failed when trailing comments present (e.g., `4 // x` parsed as 0)
