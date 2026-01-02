@@ -102,6 +102,8 @@ Located in `examples/`:
 - `example_0.pl0` — Sequential computation (pl0_0)
 - `example_1.pl0` — Emulating pl0_2 features in pl0_1
 - `bench_1_factorial.pl0` — Factorial benchmark
+- `collatz_1.pl0` — Collatz sequence iteration
+- `gcd_1.pl0` — Euclidean algorithm (GCD)
 
 ## Implementations
 
@@ -145,6 +147,8 @@ Example results for `2000 31` (with bigint, INT_BITS=0):
 
 ## Further Reading
 
+- [docs/DESIGN.md](docs/DESIGN.md) — Language progression rationale, control flow design decisions
 - [docs/IMPLEMENTATIONS.md](docs/IMPLEMENTATIONS.md) — Implementation details, integer bit width configuration
 - [docs/PEG_SPEC.md](docs/PEG_SPEC.md) — PEG grammar specification
 - [docs/minimal_turing_languages.md](docs/minimal_turing_languages.md) — Survey of minimal Turing-complete languages (Minsky machines, λ-calculus, etc.)
+- [examples/](examples/) — All example programs for each language level

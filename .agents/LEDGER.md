@@ -33,13 +33,11 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - Other levels do not have interpreters (or compilers). They are sketched with a PEG grammars and code example files.
 
 ## Next
-- Revisit the use of break_ifz vs when loops for some of the examples. Which one give the least amount of code?
-- Align pl0_0 implementations to pl0_1
+- Can C++ and LLVM IR backend code be shared/merged if the compiler is written in some other style, such as a functional style?
 - How to apply the Language Implementation Configuration parameters in pl0_1.hpp to the Koka interpreters?
 - Explore examples where parse errors (in dead code) cause different behaviour between the two Koka intepreters.
 - Explore (more of a) full embedded action language in PEG (beyond @tag)
 - Rename the pl0 languages to "E" or "e" (standing for "explore", but perhaps later for "expressive" and "efficient")?
-- Write document about design decisions.
 - Support for "syntactic sugar"?
 - Explore papers about efficient interpreters.
   - Test Graal/Truffle
@@ -57,6 +55,9 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - `LEDGER.md`
 
 ## Done (prune when exceeding 30 items)
+- Created `docs/DESIGN.md` documenting design decisions:
+  - Language Progression: rationale for pl0_0 through pl0_6, why pl0_1 is Turing threshold
+  - Control Flow: analyzed `break_ifz` vs `when` loops, decided on `break_ifz` for expressiveness
 - Aligned pl0peg0.koka to pl0peg1.koka structure:
   - Same debug output format ("Starting...", "Grammar file read...", etc.)
   - Added arg1/arg2 support
