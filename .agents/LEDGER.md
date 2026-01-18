@@ -33,7 +33,7 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - Other levels (pl0_2 through pl0_6) have PEG grammars and examples but no interpreters
 
 ## Next
-- Try to redo bigint reallocations for assignments. realloca to double size if capacity is too small. Include in pl0_1_rt_biginit_stack.ll. (Rename these files and remove "_stack" to make them shorter.).
+- Try to redo bigint reallocations for assignments. On assignment, if capacity too small: double capacity (cap = max(cap*2, needed)) and malloc a new buffer, copy, free old. Rename runtime files to remove "_stack" suffix (pl0_1_rt_bigint_stack.* -> pl0_1_rt_bigint.*).
 - How to apply the Language Implementation Configuration parameters in pl0_1.hpp to the Koka interpreters?
 - Explore examples where parse errors (in dead code) cause different behaviour between the two Koka intepreters.
 - Explore (more of a) full embedded action language in PEG (beyond @tag)

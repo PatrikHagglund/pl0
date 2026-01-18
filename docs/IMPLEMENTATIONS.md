@@ -76,7 +76,7 @@ Two backends from a single unified code generator:
 | Backend | Output | Bigint Support |
 |---------|--------|----------------|
 | C++ (default) | `.cpp` file | Via Boost headers |
-| LLVM IR (`--llvm`) | `.ll` file | Via `pl0_1_rt_bigint_stack.ll` |
+| LLVM IR (`--llvm`) | `.ll` file | Via `pl0_1_rt_bigint.ll` |
 
 ```
 src/
@@ -93,12 +93,12 @@ g++ -std=gnu++26 -O3 out.cpp -o out
 **LLVM backend:**
 ```bash
 ./pl0_1_compile --llvm prog.pl0 > prog.ll
-llvm-link prog.ll src/pl0_1_rt_bigint_stack.ll -S -o out.ll
+llvm-link prog.ll src/pl0_1_rt_bigint.ll -S -o out.ll
 clang -O3 out.ll -o out   # native
 lli out.ll                 # JIT
 ```
 
-### Stack-Based Bigint Runtime (`src/pl0_1_rt_bigint_stack.ll`)
+### Bigint Runtime (`src/pl0_1_rt_bigint.ll`)
 
 When `INT_BITS=0` (bigint), the LLVM backend uses a custom runtime with:
 - **Heap allocation for variables** — unlimited integer size, persists across loop iterations
@@ -106,25 +106,27 @@ When `INT_BITS=0` (bigint), the LLVM backend uses a custom runtime with:
 
 **Memory management strategy:**
 
-Each variable has a pointer and a capacity:
+Each variable has a (pointer, capacity) pair, starting as (null, 0):
 ```llvm
-%x = alloca ptr       ; pointer to current buffer
-%x_cap = alloca i32   ; capacity in bytes
+%x = alloca ptr       ; pointer to current buffer (initially null)
+%x_cap = alloca i32   ; capacity in bytes (initially 0)
 ```
 
-On assignment:
+All assignment and reallocation is handled by `bi_assign()`:
 1. Evaluate expression (temporaries on stack)
-2. Compute required size
-3. If fits in current capacity → reuse buffer
-4. Otherwise → malloc new buffer, free old, update capacity
-5. Restore stack (reclaims temporaries)
+2. Call `bi_assign(ptr %x, ptr %x_cap, ptr value)`
+3. Restore stack (reclaims temporaries)
 
-This avoids malloc/free on most assignments while allowing unlimited growth.
+The `bi_assign()` function uses `realloc()` with exponential growth (capacity = max(cap*2, needed)):
+- `realloc(NULL, size)` handles initial allocation (acts like `malloc`)
+- `realloc()` can extend buffers in-place when possible, avoiding copies
+- Doubling strategy amortizes allocation costs on repeated growing assignments
 
 **Key functions:**
 
 | Function | Purpose |
 |----------|---------|
+| `bi_assign(ptr*, ptr*, ptr)` | Assign value to variable (realloc if needed) |
 | `bi_init(ptr, i64)` | Initialize buffer with i64 value |
 | `bi_copy(ptr, ptr)` | Copy value between buffers |
 | `bi_add(ptr, ptr, ptr)` | out = a + b |
@@ -138,7 +140,7 @@ This avoids malloc/free on most assignments while allowing unlimited growth.
 | `bi_print(ptr)` | Print to stdout |
 | `bi_from_str(ptr, ptr)` | Parse string into buffer |
 
-**No external dependencies:** The runtime uses only C-style I/O (`putchar`) and `malloc`/`free`.
+**No external dependencies:** The runtime uses only C-style I/O (`putchar`) and `realloc`.
 
 ```bash
 make run-compile      # C++ backend
@@ -171,14 +173,14 @@ Example results for `2000 31` (bigint, INT_BITS=0):
 
 | Implementation | Time |
 |----------------|------|
-| C++ backend | 17ms |
-| LLVM backend | 29ms |
-| LLVM lli (JIT) | 90ms |
-| C++ interpreter | 0.7s |
-| Koka interpreter | 1.9s |
-| Koka PEG interpreter | 2.3s |
+| C++ backend | 18ms |
+| LLVM backend | 21ms |
+| LLVM lli (JIT) | 119ms |
+| C++ interpreter | 0.9s |
+| Koka interpreter | 2.1s |
+| Koka PEG interpreter | 2.8s |
 
-The LLVM backend is slightly slower than C++ due to the explicit capacity-check logic; Boost's `cpp_int` has this optimized and inlined.
+The LLVM backend performance is comparable to C++ backend. Memory management via `bi_assign()` with `realloc()` enables potential in-place buffer extension.
 
 ## Code Style
 

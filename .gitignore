@@ -12,4 +12,6 @@ src/.koka/
 src/pl01
 src/pl0peg1
 pl0_1_compile
-src/pl0_1_rt_bigint_stack.ll
+src/pl0_1_rt_bigint.ll
+out.cpp
+out_cpp
