@@ -27,7 +27,7 @@ void bi_assign(BigInt** var_ptr, BiSize* cap_ptr, const BigInt* value) {
     BiSize cap = *cap_ptr;
     BigInt* var = *var_ptr;
     if (needed > cap) {
-        BiSize newcap = std::max(cap * 2, needed);
+        BiSize newcap = cap * 2 > needed ? cap * 2 : needed;
         var = static_cast<BigInt*>(std::realloc(var, newcap));
         *var_ptr = var;
         *cap_ptr = newcap;
@@ -44,15 +44,18 @@ void bi_var_init(BigInt** var_ptr, BiSize* cap_ptr) {
 }
 
 void bi_arg_init(BigInt** var_ptr, BiSize* cap_ptr, int argc, char** argv, int idx) {
-    char buf[520];
-    auto* tmp = reinterpret_cast<BigInt*>(buf);
-    if (idx < argc)
-        from_str(tmp, argv[idx]);
-    else
-        init(tmp, 0);
     *var_ptr = nullptr;
     *cap_ptr = 0;
-    bi_assign(var_ptr, cap_ptr, tmp);
+    if (idx < argc) {
+        BiSize limbs_needed = std::strlen(argv[idx]) / 19 + 2;
+        auto* buf = static_cast<char*>(std::malloc(Raw::buf_size(limbs_needed)));
+        auto* tmp = reinterpret_cast<BigInt*>(buf);
+        from_str(tmp, argv[idx]);
+        bi_assign(var_ptr, cap_ptr, tmp);
+        std::free(buf);
+    } else {
+        bi_var_init(var_ptr, cap_ptr);
+    }
 }
 
 }

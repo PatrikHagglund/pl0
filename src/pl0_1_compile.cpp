@@ -46,36 +46,39 @@ auto collect_vars(std::vector<StmtPtr> &prog) {
 struct GenCpp {
     int lbl = 0, tmp = 0;
     std::vector<int> ex = {};
-    bool native_bigint = true;  // always use native for bigint (no Boost)
 
-    // For native: emit expression into a temp, return temp name
+    // Bigint expression: emits VLA temporaries, returns variable name
+    // Uses VLAs for stack allocation with automatic block-scoped cleanup
     std::string en(Expr *x) {
         if (auto *n = dynamic_cast<NumberExpr *>(x)) {
             auto t = f("t{}", tmp++);
-            p("  alignas(8) char {}[BI_SIZE]; bigint::init(R({}), {});\n", t, t, n->val);
+            p("  alignas(8) char {}_buf[24]; auto* {} = R({}_buf); bigint::init({}, {});\n", t, t, t, t, n->val);
             return t;
         }
         if (auto *v = dynamic_cast<VarExpr *>(x))
-            return v->name;
+            return v->name;  // already a Raw* pointer
         if (auto *u = dynamic_cast<NegExpr *>(x)) {
             auto a = en(u->e.get()), t = f("t{}", tmp++);
-            p("  alignas(8) char {}[BI_SIZE]; bigint::neg(R({}), R({}));\n", t, t, a);
+            p("  auto {}_sz = bigint::Raw::buf_size({}->size); alignas(8) char {}_buf[{}_sz]; auto* {} = R({}_buf); bigint::neg({}, {});\n",
+              t, a, t, t, t, t, t, a);
             return t;
         }
         if (auto *b = dynamic_cast<BinExpr *>(x)) {
             auto l = en(b->l.get()), r = en(b->r.get()), t = f("t{}", tmp++);
             auto op = b->op == '+' ? "add" : "sub";
-            p("  alignas(8) char {}[BI_SIZE]; bigint::{}(R({}), R({}), R({}));\n", t, op, t, l, r);
+            p("  auto {}_sz = bigint::Raw::buf_size(bigint::{}_size({}, {})); alignas(8) char {}_buf[{}_sz]; auto* {} = R({}_buf); bigint::{}({}, {}, {});\n",
+              t, op, l, r, t, t, t, t, op, t, l, r);
             return t;
         }
-        return "t0";
+        return "nullptr";
     }
 
     void sn(Stmt *x, int d = 1) {
         auto ind = [&] { for (int i = 0; i < d; i++) std::print("  "); };
         if (auto *a = dynamic_cast<AssignStmt *>(x)) {
+            ind(); p("{{\n");
             auto t = en(a->e.get());
-            ind(); p("bigint::copy(R({}), R({}));\n", a->name, t);
+            ind(); p("bigint::assign(&{}, &{}_cap, {}); }}\n", a->name, a->name, t);
         } else if (auto *b = dynamic_cast<BlockStmt *>(x)) {
             for (auto &y : b->stmts) sn(y.get(), d);
         } else if (auto *l = dynamic_cast<LoopStmt *>(x)) {
@@ -86,11 +89,13 @@ struct GenCpp {
             ind(); p("}} L{}:;\n", z);
             ex.pop_back();
         } else if (auto *b = dynamic_cast<BreakIfzStmt *>(x)) {
+            ind(); p("{{\n");
             auto t = en(b->cond.get());
-            ind(); p("if (bigint::is_zero(R({}))) goto L{};\n", t, ex.back());
+            ind(); p("if (bigint::is_zero({})) goto L{}; }}\n", t, ex.back());
         } else if (auto *pr = dynamic_cast<PrintStmt *>(x)) {
+            ind(); p("{{\n");
             auto t = en(pr->e.get());
-            ind(); p("bigint::print(R({}));\n", t);
+            ind(); p("bigint::print({}); }}\n", t);
         }
     }
 
@@ -134,15 +139,14 @@ struct GenCpp {
 
     void gen(std::vector<StmtPtr> &prog) {
         auto vars = collect_vars(prog);
-        cpp_preamble(native_bigint);
-        if (native_bigint && INT_BITS == 0) {
-            p("constexpr auto BI_SIZE = bigint::Raw::buf_size(64);\n");
-            p("template<class T> auto* R(T& x) {{ return reinterpret_cast<bigint::Raw*>(&x); }}\n");
+        cpp_preamble(true);
+        if (INT_BITS == 0) {
+            p("auto* R(void* p) {{ return static_cast<bigint::Raw*>(p); }}\n");
             p("int main(int argc, char** argv) {{\n");
             for (auto &v : vars)
-                p("  alignas(8) char {}[BI_SIZE]; bigint::init(R({}), 0);\n", v, v);
+                p("  bigint::Raw* {} = nullptr; bigint::Size {}_cap = 0; bigint::var_init(&{}, &{}_cap);\n", v, v, v, v);
             for (int i = 1; i <= ARG_COUNT; ++i)
-                p("  alignas(8) char arg{0}[BI_SIZE]; bigint::init(R(arg{0}), 0); if (argc > {0}) bigint::from_str(R(arg{0}), argv[{0}]);\n", i);
+                p("  bigint::Raw* arg{0} = nullptr; bigint::Size arg{0}_cap = 0; bigint::arg_init(&arg{0}, &arg{0}_cap, argc, argv, {0});\n", i);
             for (auto &x : prog)
                 sn(x.get());
         } else {

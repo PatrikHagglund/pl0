@@ -18,19 +18,18 @@ Int eval(Expr* e, Env& env) {
 
 struct Break {};
 
-template<typename T> std::string int_to_string(T v) {
-    if (v == 0) return "0";
-    std::string s; bool neg = v < 0; if (neg) v = -v;
-    while (v) { s = char('0' + int(v % 10)) + s; v /= 10; }
-    return neg ? "-" + s : s;
+template<typename T> void print_int_impl(T v) {
+    if constexpr (requires { v.str(); }) {
+        v.str();  // bigint::print via str()
+    } else {
+        if (v == 0) { std::println("0"); return; }
+        std::string s; bool neg = v < 0; if (neg) v = -v;
+        while (v) { s = char('0' + int(v % 10)) + s; v /= 10; }
+        std::println("{}", neg ? "-" + s : s);
+    }
 }
 
-void print_int(Int v) {
-    if constexpr (INT_BITS == 0)
-        v.str();  // bigint::print via str()
-    else
-        std::println("{}", int_to_string(v));
-}
+void print_int(Int v) { print_int_impl(v); }
 
 void exec(Stmt* s, Env& env) {
     if (auto* d = dynamic_cast<DeclStmt*>(s)) env.try_emplace(d->name, 0);

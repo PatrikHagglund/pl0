@@ -4,8 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstdio>
-#include <algorithm>
-#include <span>
+#include <cstring>
 #include <string>
 #include <print>
 
@@ -13,7 +12,6 @@ namespace bigint {
 
 // --- Limb abstraction ---
 // To use 128-bit limbs: Limb=__uint128_t, SLimb=__int128_t, DLimb=unsigned _BitInt(256), LimbBits=128
-// Note: _BitInt requires C++23/clang; LLVM JIT (lli) crashes on _BitInt as of LLVM 21.
 using Limb = uint64_t;
 using SLimb = int64_t;
 using DLimb = __uint128_t;
@@ -25,8 +23,7 @@ struct Raw {
     Size size;
     bool neg;
     Limb limbs[];
-    
-    auto span() const { return std::span{limbs, size}; }
+
     static constexpr Size buf_size(Size n) { return sizeof(Raw) + n * sizeof(Limb); }
 };
 
@@ -41,7 +38,7 @@ inline void init(Raw* out, SLimb v) {
 inline void copy(Raw* dst, const Raw* src) {
     dst->size = src->size;
     dst->neg = src->neg;
-    std::ranges::copy(src->span(), dst->limbs);
+    std::memcpy(dst->limbs, src->limbs, src->size * sizeof(Limb));
 }
 
 inline int cmp_mag(const Raw* a, const Raw* b) {
@@ -118,11 +115,12 @@ inline void from_str(Raw* out, const char* s) {
 
 inline void print(const Raw* v) {
     if (v->size == 0) { puts("0"); return; }
-    Limb tmp[256];
+    auto* tmp = static_cast<Limb*>(std::malloc(v->size * sizeof(Limb)));
     Size n = v->size;
-    std::ranges::copy(v->span(), tmp);
-    char buf[1024];
-    int pos = 0;
+    std::memcpy(tmp, v->limbs, n * sizeof(Limb));
+    Size buf_cap = n * 20 + 1;  // ~19.3 decimal digits per 64-bit limb
+    auto* buf = static_cast<char*>(std::malloc(buf_cap));
+    Size pos = 0;
     while (n > 0) {
         DLimb rem = 0;
         for (Size i = n; i-- > 0; ) {
@@ -136,48 +134,105 @@ inline void print(const Raw* v) {
     if (v->neg) putchar('-');
     while (pos > 0) putchar(buf[--pos]);
     putchar('\n');
+    std::free(buf);
+    std::free(tmp);
 }
 
-// --- C++ wrapper class (stack-allocated, fixed buffer) ---
+// --- Heap allocation helpers (for compiled code with unlimited size) ---
 
-template<Size MaxLimbs = 64>  // ~1200 decimal digits
+inline void var_init(Raw** var_ptr, Size* cap_ptr) {
+    auto* p = static_cast<Raw*>(std::malloc(sizeof(Raw)));
+    *var_ptr = p;
+    *cap_ptr = sizeof(Raw);
+    p->size = 0;
+    p->neg = false;
+}
+
+inline void assign(Raw** var_ptr, Size* cap_ptr, const Raw* value) {
+    Size needed = Raw::buf_size(value->size);
+    Size cap = *cap_ptr;
+    Raw* var = *var_ptr;
+    if (needed > cap) {
+        Size newcap = cap * 2 > needed ? cap * 2 : needed;
+        var = static_cast<Raw*>(std::realloc(var, newcap));
+        *var_ptr = var;
+        *cap_ptr = newcap;
+    }
+    copy(var, value);
+}
+
+inline void arg_init(Raw** var_ptr, Size* cap_ptr, int argc, char** argv, int idx) {
+    *var_ptr = nullptr;
+    *cap_ptr = 0;
+    if (idx < argc) {
+        Size limbs_needed = std::strlen(argv[idx]) / 19 + 2;  // ~19 digits per limb + margin
+        auto* buf = static_cast<char*>(std::malloc(Raw::buf_size(limbs_needed)));
+        auto* tmp = reinterpret_cast<Raw*>(buf);
+        from_str(tmp, argv[idx]);
+        assign(var_ptr, cap_ptr, tmp);
+        std::free(buf);
+    } else {
+        var_init(var_ptr, cap_ptr);
+    }
+}
+
+// --- C++ wrapper class (heap-allocated, unlimited size) ---
+// Used by interpreter. Core Raw operations remain stack-based for compiled code.
+
 class Int {
-    alignas(8) char buf_[Raw::buf_size(MaxLimbs)];
+    char* buf_ = nullptr;
+    Size cap_ = 0;  // capacity in limbs
+
     Raw* p() { return reinterpret_cast<Raw*>(buf_); }
     const Raw* p() const { return reinterpret_cast<const Raw*>(buf_); }
+
+    void ensure(Size limbs) {
+        if (limbs <= cap_) return;
+        Size grow = cap_ ? cap_ * 2 : Size(4);
+        Size new_cap = limbs > grow ? limbs : grow;
+        buf_ = static_cast<char*>(std::realloc(buf_, Raw::buf_size(new_cap)));
+        cap_ = new_cap;
+    }
 public:
-    Int() { bigint::init(p(), 0); }
-    Int(int v) { bigint::init(p(), v); }
-    Int(long long v) { bigint::init(p(), v); }
-    explicit Int(const char* s) { bigint::from_str(p(), s); }
-    Int(const Int& o) { bigint::copy(p(), o.p()); }
-    Int& operator=(const Int& o) { bigint::copy(p(), o.p()); return *this; }
-    
+    Int() { ensure(1); bigint::init(p(), 0); }
+    Int(int v) { ensure(1); bigint::init(p(), v); }
+    Int(long long v) { ensure(1); bigint::init(p(), v); }
+    explicit Int(const char* s) { ensure(std::strlen(s) / 18 + 1); bigint::from_str(p(), s); }
+    ~Int() { std::free(buf_); }
+
+    Int(const Int& o) { ensure(o.p()->size); bigint::copy(p(), o.p()); }
+    Int(Int&& o) noexcept : buf_(o.buf_), cap_(o.cap_) { o.buf_ = nullptr; o.cap_ = 0; }
+    Int& operator=(const Int& o) {
+        if (this != &o) { ensure(o.p()->size); bigint::copy(p(), o.p()); }
+        return *this;
+    }
+    Int& operator=(Int&& o) noexcept {
+        if (this != &o) { std::free(buf_); buf_ = o.buf_; cap_ = o.cap_; o.buf_ = nullptr; o.cap_ = 0; }
+        return *this;
+    }
+
     Int operator+(const Int& o) const {
         Int r;
-        alignas(8) char tmp[Raw::buf_size(MaxLimbs + 1)];
-        bigint::add(reinterpret_cast<Raw*>(tmp), p(), o.p());
-        bigint::copy(r.p(), reinterpret_cast<Raw*>(tmp));
+        Size need = bigint::add_size(p(), o.p());
+        r.ensure(need);
+        bigint::add(r.p(), p(), o.p());
         return r;
     }
     Int operator-(const Int& o) const {
         Int r;
-        alignas(8) char tmp[Raw::buf_size(MaxLimbs + 1)];
-        bigint::sub(reinterpret_cast<Raw*>(tmp), p(), o.p());
-        bigint::copy(r.p(), reinterpret_cast<Raw*>(tmp));
+        Size need = bigint::sub_size(p(), o.p());
+        r.ensure(need);
+        bigint::sub(r.p(), p(), o.p());
         return r;
     }
-    Int operator-() const { Int r; bigint::neg(r.p(), p()); return r; }
-    
-    // Comparisons
+    Int operator-() const { Int r; r.ensure(p()->size); bigint::neg(r.p(), p()); return r; }
+
     bool operator==(const Int& o) const { return cmp_mag(p(), o.p()) == 0 && p()->neg == o.p()->neg; }
     bool operator==(int v) const { Int t(v); return *this == t; }
-    bool operator<(int v) const { Int t(v); return p()->neg && !bigint::is_zero(p()); }  // simplified: only for v=0
+    bool operator<(int) const { return p()->neg && !bigint::is_zero(p()); }  // simplified: only for v=0
     explicit operator bool() const { return !bigint::is_zero(p()); }
-    
+
     std::string str() const { bigint::print(p()); return ""; }
 };
 
 } // namespace bigint
-
-using Int = bigint::Int<>;

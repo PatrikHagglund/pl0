@@ -14,8 +14,7 @@
 
 // ---------- Language Implementation Configuration ----------
 
-// Integer bit width: 0 = bigint (dynamic), 32/64/128 = native, >128 = Boost fixed-width
-// Bigint and fixed-width have similar performance; prefer bigint to avoid overflow.
+// Integer bit width: 0 = bigint (dynamic), >0 = _BitInt(N) fixed-width
 // LLVM backend: bigint requires linking with pl0_1_rt_bigint.bc (see Makefile).
 constexpr int INT_BITS = 0;
 
@@ -26,14 +25,8 @@ constexpr int ARG_COUNT = 2;
 #include "pl0_1_bigint.hpp"
 
 template<int Bits> struct IntType;
-template<> struct IntType<0>   { using type = bigint::Int<>; };  // bigint via header-only lib
-template<> struct IntType<32>  { using type = int32_t; };
-template<> struct IntType<64>  { using type = int64_t; };
-template<> struct IntType<128> { using type = __int128; };
-// For Bits > 128, use _BitInt (clang only)
-#if __has_builtin(__builtin_bit_cast)
-template<int Bits> requires (Bits > 128) struct IntType<Bits> { using type = _BitInt(Bits); };
-#endif
+template<> struct IntType<0> { using type = bigint::Int; };  // bigint via header-only lib
+template<int Bits> requires (Bits > 0) struct IntType<Bits> { using type = _BitInt(Bits); };
 
 using Int = typename IntType<INT_BITS>::type;
 

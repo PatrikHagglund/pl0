@@ -11,7 +11,7 @@ Interpreters and compilers for PL/0 level 1.
 | `pl0_1.cpp` | C++ | Interpreter | 2 | Configurable |
 | `pl0_1_compile.cpp` | C++ | Compiler | 2 | Configurable |
 
-**Compiler requirement:** clang++ 18+ (uses `_BitInt` for INT_BITS > 128; g++ not supported).
+**Compiler requirement:** clang++ 18+ (uses `_BitInt` for all fixed-width integers; g++ not supported).
 
 ## Language Implementation Configuration
 
@@ -19,10 +19,20 @@ Configured in `src/pl0_1.hpp` (C++ implementations only):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `INT_BITS` | 0 | Integer bit width (0=bigint, 32/64/128=native, >128=_BitInt) |
+| `INT_BITS` | 0 | Integer bit width: 0=bigint, >0=`_BitInt(N)` |
 | `ARG_COUNT` | 2 | Number of built-in `arg<N>` variables (arg1, arg2, ...) |
 
-**Bigint implementation:** Custom header-only library (`pl0_1_bigint.hpp`) replaced Boost.Multiprecision for ~2x better performance in the C++ backend.
+### Integer Types
+
+**Bigint (INT_BITS=0):** Header-only library (`pl0_1_bigint.hpp`) with no external dependencies. Uses 64-bit limbs. Replaced Boost.Multiprecision for ~2x better performance.
+
+- Variables: heap-allocated with `realloc()`, unlimited size
+- Temporaries: VLAs (C++ backend) or stack alloca (LLVM backend), dynamic size
+
+**Fixed-width (INT_BITS>0):** Uses `_BitInt(N)` for any bit width.
+
+- 32/64/128 bits: native CPU operations, fast
+- >128 bits: software emulation for division/modulo, slow for printing
 
 ## Interpreters
 
@@ -93,7 +103,7 @@ src/
 **C++ backend:**
 ```bash
 ./pl0_1_compile prog.pl0 > out.cpp
-clang++ -std=c++26 -O3 -I src out.cpp -o out
+clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src out.cpp -o out
 ```
 
 **LLVM backend:**
@@ -104,21 +114,23 @@ clang -O3 out.ll -o out   # native
 lli out.ll                 # JIT
 ```
 
-### Bigint Runtime (`src/pl0_1_rt_bigint.ll`)
+### Bigint Memory Management
 
-When `INT_BITS=0` (bigint), the LLVM backend uses a custom runtime with:
+Both backends use the same strategy when `INT_BITS=0` (bigint):
 - **Heap allocation for variables** — unlimited integer size, persists across loop iterations
-- **Stack allocation for temporaries** — reclaimed after each assignment via `stacksave`/`stackrestore`
+- **Stack allocation for temporaries** — dynamic size, reclaimed after each statement
+  - C++ backend: VLAs with block scope (requires `gnu++26`)
+  - LLVM backend: `alloca` with `stacksave`/`stackrestore`
 
 **Memory management strategy:**
 
-Each variable has a (pointer, capacity) pair, starting as (null, 0):
+Each variable has a (pointer, capacity) pair. In LLVM IR:
 ```llvm
-%x = alloca ptr       ; pointer to current buffer (initially null)
-%x_cap = alloca i32   ; capacity in bytes (initially 0)
+%x = alloca ptr       ; pointer to current buffer
+%x_cap = alloca i32   ; capacity in bytes
 ```
 
-All assignment and reallocation is handled by `bi_assign()`:
+All assignment and reallocation is handled by `assign()` (C++) / `bi_assign()` (LLVM):
 1. Evaluate expression (temporaries on stack)
 2. Call `bi_assign(ptr %x, ptr %x_cap, ptr value)`
 3. Restore stack (reclaims temporaries)
@@ -146,7 +158,7 @@ The `bi_assign()` function uses `realloc()` with exponential growth (capacity = 
 | `bi_print(ptr)` | Print to stdout |
 | `bi_from_str(ptr, ptr)` | Parse string into buffer |
 
-**No external dependencies:** The runtime uses only C-style I/O (`putchar`) and `realloc`.
+**LLVM runtime linkage:** The runtime (`pl0_1_rt_bigint.cpp`) wraps bigint operations with `extern "C"` linkage for LLVM IR compatibility. Uses only C-compatible I/O (`putchar`, `puts`) and memory (`malloc`, `realloc`, `free`).
 
 ```bash
 make run-compile      # C++ backend

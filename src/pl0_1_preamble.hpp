@@ -62,15 +62,9 @@ inline void cpp_preamble(bool use_native_bigint = false) {
         return;
     }
     std::print("#include <print>\n#include <cstdlib>\n");
-    if constexpr (INT_BITS <= 64)
-        std::print("using Int = int64_t;\n");
-    else if constexpr (INT_BITS <= 128)
-        std::print("using Int = __int128;\n");
-    else
-        std::print("using Int = _BitInt({});\n", INT_BITS);
-    // to_string for non-standard types
-    if constexpr (INT_BITS > 64)
-        std::print("std::string to_string(Int v) {{ if (!v) return \"0\"; std::string s; bool n = v < 0; if (n) v = -v; while (v) {{ s = char('0' + v % 10) + s; v /= 10; }} return n ? \"-\" + s : s; }}\n");
+    std::print("using Int = _BitInt({});\n", INT_BITS);
+    // to_string for _BitInt types (no std::to_string support)
+    std::print("std::string to_string(Int v) {{ if (!v) return \"0\"; std::string s; bool n = v < 0; if (n) v = -v; while (v) {{ s = char('0' + v % 10) + s; v /= 10; }} return n ? \"-\" + s : s; }}\n");
 }
 
 // Emit argument parsing

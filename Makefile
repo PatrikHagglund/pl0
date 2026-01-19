@@ -79,7 +79,7 @@ run: $(TARGET)
 	$(RUN) ./$(TARGET) examples/example_0.pl0
 
 run-compile: $(TARGET_COMPILE)
-	$(RUN) sh -c "./$(TARGET_COMPILE) examples/example_0.pl0 > out.cpp && clang++ -std=c++26 -O3 out.cpp -o out && ./out"
+	$(RUN) sh -c "./$(TARGET_COMPILE) examples/example_0.pl0 > out.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 out.cpp -o out && ./out"
 
 LLVM_LINK = llvm-link /tmp/prog.ll src/pl0_1_rt_bigint.ll -S -o out.ll
 
@@ -100,7 +100,7 @@ BENCH_1_ARGS = 2000 31
 
 bench-1: $(TARGET) $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll src/pl0peg1 src/pl01
 	@# All compiled code uses -O3 optimization
-	@$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && clang++ -std=c++26 -O3 -I src out.cpp -o out_cpp"
+	@$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src out.cpp -o out_cpp"
 	@echo "=== C++ backend ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_1_ARGS)"
 	@$(RUN) sh -c "./$(TARGET_COMPILE) --llvm $(BENCH_1) > /tmp/prog.ll && $(LLVM_LINK)"
 	@echo "=== LLVM backend ===" && $(RUN) sh -c "clang -Wno-override-module -O3 out.ll -o out && time ./out $(BENCH_1_ARGS)"
@@ -144,15 +144,15 @@ test: $(TARGET) $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll src/pl0peg1 src/pl01
 	  if [ "$$actual" = "$$expected" ]; then echo "PASS $$name"; pass=$$((pass+1)); \
 	  else echo "FAIL $$name"; printf "  expected: %s\n" "$$expected" | head -1; printf "  actual: %s\n" "$$actual" | head -1; fail=$$((fail+1)); fi; \
 	}; \
-	./$(TARGET_COMPILE) examples/example_0.pl0 > /tmp/out.cpp && clang++ -std=c++26 -O3 /tmp/out.cpp -o /tmp/out_cpp; \
+	./$(TARGET_COMPILE) examples/example_0.pl0 > /tmp/out.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src /tmp/out.cpp -o /tmp/out_cpp; \
 	./$(TARGET_COMPILE) --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && clang -Wno-override-module -O3 out.ll -o /tmp/out_llvm; \
-	./$(TARGET_COMPILE) examples/example_1.pl0 > /tmp/out1.cpp && clang++ -std=c++26 -O3 /tmp/out1.cpp -o /tmp/out1_cpp; \
+	./$(TARGET_COMPILE) examples/example_1.pl0 > /tmp/out1.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src /tmp/out1.cpp -o /tmp/out1_cpp; \
 	./$(TARGET_COMPILE) --llvm examples/example_1.pl0 > /tmp/prog1.ll && llvm-link /tmp/prog1.ll src/pl0_1_rt_bigint.ll -S -o /tmp/out1.ll && clang -Wno-override-module -O3 /tmp/out1.ll -o /tmp/out1_llvm; \
-	./$(TARGET_COMPILE) examples/bench_1_factorial.pl0 > /tmp/fact.cpp && clang++ -std=c++26 -O3 /tmp/fact.cpp -o /tmp/fact_cpp; \
+	./$(TARGET_COMPILE) examples/bench_1_factorial.pl0 > /tmp/fact.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src /tmp/fact.cpp -o /tmp/fact_cpp; \
 	./$(TARGET_COMPILE) --llvm examples/bench_1_factorial.pl0 > /tmp/fact.ll && llvm-link /tmp/fact.ll src/pl0_1_rt_bigint.ll -S -o /tmp/factll.ll && clang -Wno-override-module -O3 /tmp/factll.ll -o /tmp/fact_llvm; \
-	./$(TARGET_COMPILE) examples/collatz_1.pl0 > /tmp/coll.cpp && clang++ -std=c++26 -O3 /tmp/coll.cpp -o /tmp/coll_cpp; \
+	./$(TARGET_COMPILE) examples/collatz_1.pl0 > /tmp/coll.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src /tmp/coll.cpp -o /tmp/coll_cpp; \
 	./$(TARGET_COMPILE) --llvm examples/collatz_1.pl0 > /tmp/coll.ll && llvm-link /tmp/coll.ll src/pl0_1_rt_bigint.ll -S -o /tmp/collll.ll && clang -Wno-override-module -O3 /tmp/collll.ll -o /tmp/coll_llvm; \
-	./$(TARGET_COMPILE) examples/gcd_1.pl0 > /tmp/gcd.cpp && clang++ -std=c++26 -O3 /tmp/gcd.cpp -o /tmp/gcd_cpp; \
+	./$(TARGET_COMPILE) examples/gcd_1.pl0 > /tmp/gcd.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src /tmp/gcd.cpp -o /tmp/gcd_cpp; \
 	./$(TARGET_COMPILE) --llvm examples/gcd_1.pl0 > /tmp/gcd.ll && llvm-link /tmp/gcd.ll src/pl0_1_rt_bigint.ll -S -o /tmp/gcdll.ll && clang -Wno-override-module -O3 /tmp/gcdll.ll -o /tmp/gcd_llvm; \
 	E0="7\n1\n8"; E1="6\n12\n3\n2"; COLL="5\n16\n8\n4\n2\n1"; \
 	check "example_0 cpp-interp" "./$(TARGET) examples/example_0.pl0" "$$(printf "$$E0")"; \
