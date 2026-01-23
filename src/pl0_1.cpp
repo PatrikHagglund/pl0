@@ -10,26 +10,32 @@ Int eval(Expr* e, Env& env) {
     if (auto* u = dynamic_cast<NegExpr*>(e)) return -eval(u->e.get(), env);
     if (auto* b = dynamic_cast<BinExpr*>(e)) {
         Int l = eval(b->l.get(), env), r = eval(b->r.get(), env);
-        if (b->op == '+') return Int(l + r);
-        return Int(l - r);
+        if (b->op == '+') return l + r;
+        return l - r;
     }
     return 0;
 }
 
 struct Break {};
 
-template<typename T> void print_int_impl(T v) {
-    if constexpr (requires { v.str(); }) {
-        v.str();  // bigint::print via str()
-    } else {
-        if (v == 0) { std::println("0"); return; }
-        std::string s; bool neg = v < 0; if (neg) v = -v;
-        while (v) { s = char('0' + int(v % 10)) + s; v /= 10; }
-        std::println("{}", neg ? "-" + s : s);
-    }
+void print_int(const Int& v) {
+#if INT_BITS == 0
+    v.str();
+#else
+    if (v == 0) { std::println("0"); return; }
+    std::string s; Int x = v; bool neg = x < 0; if (neg) x = -x;
+    while (x) { s = char('0' + int(x % 10)) + s; x /= 10; }
+    std::println("{}", neg ? "-" + s : s);
+#endif
 }
 
-void print_int(Int v) { print_int_impl(v); }
+Int parse_arg(int argc, char** argv, int idx) {
+#if INT_BITS == 0
+    return argc > idx ? Int(argv[idx]) : Int(0);
+#else
+    return argc > idx ? std::atoll(argv[idx]) : 0;
+#endif
+}
 
 void exec(Stmt* s, Env& env) {
     if (auto* d = dynamic_cast<DeclStmt*>(s)) env.try_emplace(d->name, 0);
@@ -48,13 +54,8 @@ int main(int argc, char** argv) {
     if (!prog) { std::println(stderr, "Error: {}", prog.error()); return 1; }
 
     Env env;
-    for (int i = 1; i <= ARG_COUNT; ++i) {
-        auto name = std::format("arg{}", i);
-        if constexpr (INT_BITS > 0 && INT_BITS <= 128)
-            env[name] = argc > i + 1 ? std::atoll(argv[i + 1]) : 0;
-        else
-            env[name] = argc > i + 1 ? Int(argv[i + 1]) : Int(0);
-    }
+    for (int i = 1; i <= ARG_COUNT; ++i)
+        env[std::format("arg{}", i)] = parse_arg(argc, argv, i + 1);
 
     for (auto& s : *prog) {
         try { exec(s.get(), env); }

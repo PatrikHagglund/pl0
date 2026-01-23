@@ -163,12 +163,12 @@ Example results for `2000 31` (with bigint, INT_BITS=0):
 
 | Implementation | Time |
 |----------------|------|
-| C++ backend | 9ms |
-| LLVM backend | 27ms |
-| LLVM lli (JIT) | 90ms |
-| C++ interpreter | 0.6s |
-| Koka interpreter | 1.9s |
-| Koka PEG interpreter | 2.3s |
+| C++ backend | 16ms |
+| LLVM backend | 15ms |
+| LLVM lli (JIT) | 87ms |
+| C++ interpreter | 0.73s |
+| Koka interpreter | 2.1s |
+| Koka PEG interpreter | 2.5s |
 
 ## Further Reading
 

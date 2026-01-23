@@ -19,6 +19,42 @@ inline constexpr int LimbBits = 64;
 inline constexpr Limb Limb0 = 0;
 using Size = uint32_t;
 
+// --- Limb-width dependent carry/borrow operations ---
+inline Limb addc(Limb a, Limb b, Limb carry_in, Limb* carry_out) {
+    if constexpr (sizeof(Limb) == 8) {
+        unsigned long co;
+        auto r = __builtin_addcl(a, b, carry_in, &co);
+        *carry_out = co;
+        return r;
+    } else if constexpr (sizeof(Limb) == 4) {
+        unsigned co;
+        auto r = __builtin_addc(a, b, carry_in, &co);
+        *carry_out = co;
+        return r;
+    } else {
+        auto sum = static_cast<DLimb>(a) + b + carry_in;
+        *carry_out = static_cast<Limb>(sum >> LimbBits);
+        return static_cast<Limb>(sum);
+    }
+}
+
+inline Limb subc(Limb a, Limb b, Limb borrow_in, Limb* borrow_out) {
+    if constexpr (sizeof(Limb) == 8) {
+        unsigned long bo;
+        auto r = __builtin_subcl(a, b, borrow_in, &bo);
+        *borrow_out = bo;
+        return r;
+    } else if constexpr (sizeof(Limb) == 4) {
+        unsigned bo;
+        auto r = __builtin_subc(a, b, borrow_in, &bo);
+        *borrow_out = bo;
+        return r;
+    } else {
+        *borrow_out = a < b + borrow_in;
+        return a - b - borrow_in;
+    }
+}
+
 struct Raw {
     Size size;
     bool neg;
@@ -26,6 +62,14 @@ struct Raw {
 
     static constexpr Size buf_size(Size n) { return sizeof(Raw) + n * sizeof(Limb); }
 };
+
+// --- Stack allocation macros for C++ backend ---
+// BIGINT_TMP(name, limbs) - declare stack-allocated Raw* with given limb capacity
+// BIGINT_LIT(name)        - declare stack-allocated Raw* for a literal (1 limb)
+#define BIGINT_TMP(name, limbs) \
+    alignas(8) char name##_buf[bigint::Raw::buf_size(limbs)]; \
+    auto* name = reinterpret_cast<bigint::Raw*>(name##_buf)
+#define BIGINT_LIT(name) BIGINT_TMP(name, 1)
 
 // --- Core operations (all inline) ---
 
@@ -54,9 +98,7 @@ inline void add_mag(Raw* out, const Raw* a, const Raw* b) {
     for (Size i = 0; i < n; i++) {
         auto av = i < a->size ? a->limbs[i] : Limb0;
         auto bv = i < b->size ? b->limbs[i] : Limb0;
-        auto sum = static_cast<DLimb>(av) + bv + carry;
-        out->limbs[i] = static_cast<Limb>(sum);
-        carry = static_cast<Limb>(sum >> LimbBits);
+        out->limbs[i] = addc(av, bv, carry, &carry);
     }
     out->size = carry ? (out->limbs[n] = carry, n + 1) : n;
 }
@@ -67,8 +109,7 @@ inline void sub_mag(Raw* out, const Raw* a, const Raw* b) {
     for (Size i = 0; i < n; i++) {
         auto av = a->limbs[i];
         auto bv = i < b->size ? b->limbs[i] : Limb0;
-        out->limbs[i] = av - bv - borrow;
-        borrow = av < bv + borrow;
+        out->limbs[i] = subc(av, bv, borrow, &borrow);
     }
     while (n > 0 && out->limbs[n-1] == 0) n--;
     out->size = n;
@@ -98,19 +139,38 @@ inline void neg(Raw* out, const Raw* a) {
 
 inline bool is_zero(const Raw* a) { return a->size == 0; }
 
+// Multiply limb by 10, add carry, return new carry (high part)
+inline Limb mul10_add(Limb a, Limb carry_in, Limb* lo) {
+    // a * 10 = a * 8 + a * 2
+    Limb a8, a2, sum;
+    Limb c1 = a >> (LimbBits - 3);  // high 3 bits of a*8
+    a8 = a << 3;
+    Limb c2 = a >> (LimbBits - 1);  // high bit of a*2
+    a2 = a << 1;
+    Limb c3 = __builtin_add_overflow(a8, a2, &sum);
+    Limb c4 = __builtin_add_overflow(sum, carry_in, lo);
+    return c1 + c2 + c3 + c4;
+}
+
 inline void from_str(Raw* out, const char* s) {
     out->size = 0;
     out->neg = (*s == '-') ? (s++, true) : (*s == '+' ? (s++, false) : false);
     while (*s) {
         Limb carry = *s++ - '0';
         for (Size i = 0; i < out->size; i++) {
-            auto p = static_cast<DLimb>(out->limbs[i]) * 10 + carry;
-            out->limbs[i] = static_cast<Limb>(p);
-            carry = static_cast<Limb>(p >> LimbBits);
+            carry = mul10_add(out->limbs[i], carry, &out->limbs[i]);
         }
         if (carry) out->limbs[out->size++] = carry;
     }
     if (out->size == 0) out->neg = false;
+}
+
+// Divide (rem:limb) by 10, return quotient and update rem
+inline Limb div10(Limb hi, Limb lo, Limb* rem_out) {
+    // Use 128-bit division - no portable builtin alternative
+    auto cur = (static_cast<DLimb>(hi) << LimbBits) | lo;
+    *rem_out = cur % 10;
+    return static_cast<Limb>(cur / 10);
 }
 
 inline void print(const Raw* v) {
@@ -122,12 +182,9 @@ inline void print(const Raw* v) {
     auto* buf = static_cast<char*>(std::malloc(buf_cap));
     Size pos = 0;
     while (n > 0) {
-        DLimb rem = 0;
-        for (Size i = n; i-- > 0; ) {
-            auto cur = (rem << LimbBits) | tmp[i];
-            tmp[i] = static_cast<Limb>(cur / 10);
-            rem = cur % 10;
-        }
+        Limb rem = 0;
+        for (Size i = n; i-- > 0; )
+            tmp[i] = div10(rem, tmp[i], &rem);
         buf[pos++] = '0' + static_cast<int>(rem);
         while (n > 0 && tmp[n-1] == 0) n--;
     }
@@ -176,63 +233,71 @@ inline void arg_init(Raw** var_ptr, Size* cap_ptr, int argc, char** argv, int id
     }
 }
 
-// --- C++ wrapper class (heap-allocated, unlimited size) ---
-// Used by interpreter. Core Raw operations remain stack-based for compiled code.
+// --- C++ wrapper class using shared assign() ---
+// Used by interpreter. Wraps Raw* with RAII.
 
 class Int {
-    char* buf_ = nullptr;
-    Size cap_ = 0;  // capacity in limbs
+    Raw* ptr_ = nullptr;
+    Size cap_ = 0;  // capacity in bytes
 
-    Raw* p() { return reinterpret_cast<Raw*>(buf_); }
-    const Raw* p() const { return reinterpret_cast<const Raw*>(buf_); }
-
-    void ensure(Size limbs) {
-        if (limbs <= cap_) return;
-        Size grow = cap_ ? cap_ * 2 : Size(4);
-        Size new_cap = limbs > grow ? limbs : grow;
-        buf_ = static_cast<char*>(std::realloc(buf_, Raw::buf_size(new_cap)));
-        cap_ = new_cap;
-    }
+    Raw* p() { return ptr_; }
+    const Raw* p() const { return ptr_; }
 public:
-    Int() { ensure(1); bigint::init(p(), 0); }
-    Int(int v) { ensure(1); bigint::init(p(), v); }
-    Int(long long v) { ensure(1); bigint::init(p(), v); }
-    explicit Int(const char* s) { ensure(std::strlen(s) / 18 + 1); bigint::from_str(p(), s); }
-    ~Int() { std::free(buf_); }
+    Int() { var_init(&ptr_, &cap_); }
+    Int(int v) { var_init(&ptr_, &cap_); init(ptr_, v); }
+    Int(long long v) { var_init(&ptr_, &cap_); init(ptr_, v); }
+    explicit Int(const char* s) {
+        Size limbs = std::strlen(s) / 18 + 2;
+        ptr_ = static_cast<Raw*>(std::malloc(Raw::buf_size(limbs)));
+        cap_ = Raw::buf_size(limbs);
+        from_str(ptr_, s);
+    }
+    ~Int() { std::free(ptr_); }
 
-    Int(const Int& o) { ensure(o.p()->size); bigint::copy(p(), o.p()); }
-    Int(Int&& o) noexcept : buf_(o.buf_), cap_(o.cap_) { o.buf_ = nullptr; o.cap_ = 0; }
+    Int(const Int& o) { var_init(&ptr_, &cap_); assign(&ptr_, &cap_, o.ptr_); }
+    Int(Int&& o) noexcept : ptr_(o.ptr_), cap_(o.cap_) { o.ptr_ = nullptr; o.cap_ = 0; }
     Int& operator=(const Int& o) {
-        if (this != &o) { ensure(o.p()->size); bigint::copy(p(), o.p()); }
+        if (this != &o) assign(&ptr_, &cap_, o.ptr_);
         return *this;
     }
     Int& operator=(Int&& o) noexcept {
-        if (this != &o) { std::free(buf_); buf_ = o.buf_; cap_ = o.cap_; o.buf_ = nullptr; o.cap_ = 0; }
+        if (this != &o) { std::free(ptr_); ptr_ = o.ptr_; cap_ = o.cap_; o.ptr_ = nullptr; o.cap_ = 0; }
         return *this;
     }
 
     Int operator+(const Int& o) const {
         Int r;
-        Size need = bigint::add_size(p(), o.p());
-        r.ensure(need);
-        bigint::add(r.p(), p(), o.p());
+        Size sz = add_size(p(), o.p());
+        char buf[Raw::buf_size(sz)];
+        auto* tmp = reinterpret_cast<Raw*>(buf);
+        add(tmp, p(), o.p());
+        assign(&r.ptr_, &r.cap_, tmp);
         return r;
     }
     Int operator-(const Int& o) const {
         Int r;
-        Size need = bigint::sub_size(p(), o.p());
-        r.ensure(need);
-        bigint::sub(r.p(), p(), o.p());
+        Size sz = sub_size(p(), o.p());
+        char buf[Raw::buf_size(sz)];
+        auto* tmp = reinterpret_cast<Raw*>(buf);
+        sub(tmp, p(), o.p());
+        assign(&r.ptr_, &r.cap_, tmp);
         return r;
     }
-    Int operator-() const { Int r; r.ensure(p()->size); bigint::neg(r.p(), p()); return r; }
+    Int operator-() const {
+        Int r;
+        char buf[Raw::buf_size(p()->size)];
+        auto* tmp = reinterpret_cast<Raw*>(buf);
+        neg(tmp, p());
+        assign(&r.ptr_, &r.cap_, tmp);
+        return r;
+    }
 
     bool operator==(const Int& o) const { return cmp_mag(p(), o.p()) == 0 && p()->neg == o.p()->neg; }
     bool operator==(int v) const { Int t(v); return *this == t; }
-    bool operator<(int) const { return p()->neg && !bigint::is_zero(p()); }  // simplified: only for v=0
-    explicit operator bool() const { return !bigint::is_zero(p()); }
+    bool operator<(int) const { return p()->neg && !is_zero(p()); }
+    explicit operator bool() const { return !is_zero(p()); }
 
-    std::string str() const { bigint::print(p()); return ""; }
+    std::string str() const { print(p()); return ""; }
 };
 
 } // namespace bigint

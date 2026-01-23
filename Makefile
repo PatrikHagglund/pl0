@@ -58,7 +58,7 @@ ifneq ($(BUILD_MODE),native)
 	$(BUILD_CMD)
 	touch .image
 endif
-CXXFLAGS = -std=gnu++26 -Wall -Wextra -Werror
+CXXFLAGS = -std=gnu++26 -Wall -Wextra -Werror -Wno-vla-cxx-extension
 
 TARGET = pl0_1
 SRC = src/pl0_1.cpp

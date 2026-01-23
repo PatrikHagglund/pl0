@@ -1,7 +1,7 @@
 // PL/0 Level 1 Compiler - C++ and LLVM IR backends
 //
 // Two backends:
-//   - C++ backend (default): emits C++ using Boost.Multiprecision for bigint
+//   - C++ backend (default): emits C++ using pl0_1_bigint.hpp or _BitInt
 //   - LLVM backend (--llvm): emits LLVM IR, links with pl0_1_rt_bigint.ll
 //
 // Bigint memory management (LLVM backend, INT_BITS=0):
@@ -42,80 +42,39 @@ auto collect_vars(std::vector<StmtPtr> &prog) {
     return vars;
 }
 
-// C++ backend
+// C++ backend - unified code generation using runtime macros
 struct GenCpp {
     int lbl = 0, tmp = 0;
     std::vector<int> ex = {};
 
-    // Bigint expression: emits VLA temporaries, returns variable name
-    // Uses VLAs for stack allocation with automatic block-scoped cleanup
-    std::string en(Expr *x) {
+    // Expression codegen - emits temp declaration, returns variable name
+    std::string e(Expr *x) {
         if (auto *n = dynamic_cast<NumberExpr *>(x)) {
             auto t = f("t{}", tmp++);
-            p("  alignas(8) char {}_buf[24]; auto* {} = R({}_buf); bigint::init({}, {});\n", t, t, t, t, n->val);
+            p("  LIT({}, {});\n", t, n->val);
             return t;
         }
         if (auto *v = dynamic_cast<VarExpr *>(x))
-            return v->name;  // already a Raw* pointer
+            return v->name;
         if (auto *u = dynamic_cast<NegExpr *>(x)) {
-            auto a = en(u->e.get()), t = f("t{}", tmp++);
-            p("  auto {}_sz = bigint::Raw::buf_size({}->size); alignas(8) char {}_buf[{}_sz]; auto* {} = R({}_buf); bigint::neg({}, {});\n",
-              t, a, t, t, t, t, t, a);
+            auto a = e(u->e.get()), t = f("t{}", tmp++);
+            p("  NEG({}, {});\n", t, a);
             return t;
         }
         if (auto *b = dynamic_cast<BinExpr *>(x)) {
-            auto l = en(b->l.get()), r = en(b->r.get()), t = f("t{}", tmp++);
-            auto op = b->op == '+' ? "add" : "sub";
-            p("  auto {}_sz = bigint::Raw::buf_size(bigint::{}_size({}, {})); alignas(8) char {}_buf[{}_sz]; auto* {} = R({}_buf); bigint::{}({}, {}, {});\n",
-              t, op, l, r, t, t, t, t, op, t, l, r);
+            auto l = e(b->l.get()), r = e(b->r.get()), t = f("t{}", tmp++);
+            p("  {}({}, {}, {});\n", b->op == '+' ? "ADD" : "SUB", t, l, r);
             return t;
         }
-        return "nullptr";
-    }
-
-    void sn(Stmt *x, int d = 1) {
-        auto ind = [&] { for (int i = 0; i < d; i++) std::print("  "); };
-        if (auto *a = dynamic_cast<AssignStmt *>(x)) {
-            ind(); p("{{\n");
-            auto t = en(a->e.get());
-            ind(); p("bigint::assign(&{}, &{}_cap, {}); }}\n", a->name, a->name, t);
-        } else if (auto *b = dynamic_cast<BlockStmt *>(x)) {
-            for (auto &y : b->stmts) sn(y.get(), d);
-        } else if (auto *l = dynamic_cast<LoopStmt *>(x)) {
-            int z = lbl++;
-            ex.push_back(z);
-            ind(); p("for(;;) {{\n");
-            sn(l->body.get(), d + 1);
-            ind(); p("}} L{}:;\n", z);
-            ex.pop_back();
-        } else if (auto *b = dynamic_cast<BreakIfzStmt *>(x)) {
-            ind(); p("{{\n");
-            auto t = en(b->cond.get());
-            ind(); p("if (bigint::is_zero({})) goto L{}; }}\n", t, ex.back());
-        } else if (auto *pr = dynamic_cast<PrintStmt *>(x)) {
-            ind(); p("{{\n");
-            auto t = en(pr->e.get());
-            ind(); p("bigint::print({}); }}\n", t);
-        }
-    }
-
-    std::string e(Expr *x) {
-        if (auto *n = dynamic_cast<NumberExpr *>(x))
-            return f("Int({})", n->val);
-        if (auto *v = dynamic_cast<VarExpr *>(x))
-            return v->name;
-        if (auto *u = dynamic_cast<NegExpr *>(x))
-            return f("-({})", e(u->e.get()));
-        if (auto *b = dynamic_cast<BinExpr *>(x))
-            return f("({} {} {})", e(b->l.get()), b->op, e(b->r.get()));
-        return "Int(0)";
+        return "0";
     }
 
     void s(Stmt *x, int d = 1) {
         auto ind = [&] { for (int i = 0; i < d; i++) std::print("  "); };
         if (auto *a = dynamic_cast<AssignStmt *>(x)) {
-            ind();
-            p("{} = {};\n", a->name, e(a->e.get()));
+            ind(); p("{{\n");
+            auto t = e(a->e.get());
+            ind(); p("ASSIGN({}, {}); }}\n", a->name, t);
         } else if (auto *b = dynamic_cast<BlockStmt *>(x)) {
             for (auto &y : b->stmts) s(y.get(), d);
         } else if (auto *l = dynamic_cast<LoopStmt *>(x)) {
@@ -126,37 +85,26 @@ struct GenCpp {
             ind(); p("}} L{}:;\n", z);
             ex.pop_back();
         } else if (auto *b = dynamic_cast<BreakIfzStmt *>(x)) {
-            ind();
-            p("if ({} == 0) goto L{};\n", e(b->cond.get()), ex.back());
+            ind(); p("{{\n");
+            auto t = e(b->cond.get());
+            ind(); p("if (IS_ZERO({})) goto L{}; }}\n", t, ex.back());
         } else if (auto *pr = dynamic_cast<PrintStmt *>(x)) {
-            ind();
-            if (INT_BITS > 0 && INT_BITS <= 128)
-                p("std::print(\"{{}}\\n\", to_string({}));\n", e(pr->e.get()));
-            else
-                p("std::print(\"{{}}\\n\", ({}).str());\n", e(pr->e.get()));
+            ind(); p("{{\n");
+            auto t = e(pr->e.get());
+            ind(); p("PRINT({}); }}\n", t);
         }
     }
 
     void gen(std::vector<StmtPtr> &prog) {
         auto vars = collect_vars(prog);
-        cpp_preamble(true);
-        if (INT_BITS == 0) {
-            p("auto* R(void* p) {{ return static_cast<bigint::Raw*>(p); }}\n");
-            p("int main(int argc, char** argv) {{\n");
-            for (auto &v : vars)
-                p("  bigint::Raw* {} = nullptr; bigint::Size {}_cap = 0; bigint::var_init(&{}, &{}_cap);\n", v, v, v, v);
-            for (int i = 1; i <= ARG_COUNT; ++i)
-                p("  bigint::Raw* arg{0} = nullptr; bigint::Size arg{0}_cap = 0; bigint::arg_init(&arg{0}, &arg{0}_cap, argc, argv, {0});\n", i);
-            for (auto &x : prog)
-                sn(x.get());
-        } else {
-            p("int main(int argc, char** argv) {{\n");
-            for (auto &v : vars)
-                p("  Int {};\n", v);
-            emit_args_cpp();
-            for (auto &x : prog)
-                s(x.get());
-        }
+        cpp_preamble();
+        p("int main(int argc, char** argv) {{\n");
+        for (auto &v : vars)
+            p("  VAR({});\n", v);
+        for (int i = 1; i <= ARG_COUNT; ++i)
+            p("  ARG(arg{0}, {0});\n", i);
+        for (auto &x : prog)
+            s(x.get());
         p("}}\n");
     }
 };

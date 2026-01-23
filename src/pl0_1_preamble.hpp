@@ -55,16 +55,36 @@ define i32 @main(i32 %argc, ptr %argv) {{
 entry:)", I, ret, dig);
 }
 
-// C++ preamble
-inline void cpp_preamble(bool use_native_bigint = false) {
-    if ((use_native_bigint || true) && INT_BITS == 0) {  // always use native for bigint
-        std::print("#include \"pl0_1_bigint.hpp\"\n");
-        return;
+// C++ preamble - unified runtime interface
+inline void cpp_preamble(bool = false) {
+    if (INT_BITS == 0) {
+        std::print(R"(#include "pl0_1_bigint.hpp"
+// Unified runtime interface for bigint
+#define VAR(name) bigint::Raw* name = nullptr; bigint::Size name##_cap = 0; bigint::var_init(&name, &name##_cap)
+#define ARG(name, idx) bigint::Raw* name = nullptr; bigint::Size name##_cap = 0; bigint::arg_init(&name, &name##_cap, argc, argv, idx)
+#define ASSIGN(name, val) bigint::assign(&name, &name##_cap, val)
+#define IS_ZERO(x) bigint::is_zero(x)
+#define PRINT(x) bigint::print(x)
+#define LIT(name, v) BIGINT_LIT(name); bigint::init(name, v)
+#define NEG(name, a) BIGINT_TMP(name, (a)->size); bigint::neg(name, a)
+#define ADD(name, a, b) BIGINT_TMP(name, bigint::add_size(a, b)); bigint::add(name, a, b)
+#define SUB(name, a, b) BIGINT_TMP(name, bigint::sub_size(a, b)); bigint::sub(name, a, b)
+)");
+    } else {
+        std::print("#include <print>\n#include <cstdlib>\n");
+        std::print("using Int = _BitInt({});\n", INT_BITS);
+        std::print("std::string to_string(Int v) {{ if (!v) return \"0\"; std::string s; bool n = v < 0; if (n) v = -v; while (v) {{ s = char('0' + v % 10) + s; v /= 10; }} return n ? \"-\" + s : s; }}\n");
+        std::print("// Unified runtime interface for fixed-width\n");
+        std::print("#define VAR(name) Int name = 0\n");
+        std::print("#define ARG(name, idx) Int name = argc > idx ? std::atoll(argv[idx]) : 0\n");
+        std::print("#define ASSIGN(name, val) name = (val)\n");
+        std::print("#define IS_ZERO(x) ((x) == 0)\n");
+        std::print("#define PRINT(x) std::print(\"{{}}\\n\", to_string(x))\n");
+        std::print("#define LIT(name, v) Int name = (v)\n");
+        std::print("#define NEG(name, a) Int name = -(a)\n");
+        std::print("#define ADD(name, a, b) Int name = (a) + (b)\n");
+        std::print("#define SUB(name, a, b) Int name = (a) - (b)\n");
     }
-    std::print("#include <print>\n#include <cstdlib>\n");
-    std::print("using Int = _BitInt({});\n", INT_BITS);
-    // to_string for _BitInt types (no std::to_string support)
-    std::print("std::string to_string(Int v) {{ if (!v) return \"0\"; std::string s; bool n = v < 0; if (n) v = -v; while (v) {{ s = char('0' + v % 10) + s; v /= 10; }} return n ? \"-\" + s : s; }}\n");
 }
 
 // Emit argument parsing
