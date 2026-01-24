@@ -79,7 +79,7 @@ run: $(TARGET)
 	$(RUN) ./$(TARGET) examples/example_0.pl0
 
 run-compile: $(TARGET_COMPILE)
-	$(RUN) sh -c "./$(TARGET_COMPILE) examples/example_0.pl0 > out.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 out.cpp -o out && ./out"
+	$(RUN) sh -c "./$(TARGET_COMPILE) examples/example_0.pl0 > out.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src out.cpp -o out && ./out"
 
 LLVM_LINK = llvm-link /tmp/prog.ll src/pl0_1_rt_bigint.ll -S -o out.ll
 

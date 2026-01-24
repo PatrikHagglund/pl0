@@ -62,12 +62,49 @@ make run-llvm-native  # LLVM native
 
 ## Integer Configuration
 
-Configured in `src/pl0_1.hpp`:
+Configured via macros in `src/pl0_1.hpp`:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `INT_BITS` | 0 | 0 = bigint (unlimited), >0 = `_BitInt(N)` |
 | `ARG_COUNT` | 2 | Number of `arg<N>` variables |
+| `LIMB_BITS` | 64 | Bigint limb width (32, 64, or larger) |
+
+### Configuration Flexibility
+
+The flexibility of these settings varies by implementation:
+
+| Setting | Interpreter | C++ Backend | LLVM Backend |
+|---------|-------------|-------------|--------------|
+| `INT_BITS` | Compile-time only | Runtime (`-DINT_BITS=N`) | Compile-time only |
+| `ARG_COUNT` | Compile-time only | Compile-time only | Compile-time only |
+| `LIMB_BITS` | Compile-time only | Compile-time only | Compile-time only |
+
+**C++ backend `INT_BITS` flexibility:**
+
+The generated C++ code uses `#ifndef INT_BITS` guards, allowing override when compiling the output:
+
+```bash
+# Generate C++ code (uses default INT_BITS=0)
+./pl0_1_compile prog.pl0 > out.cpp
+
+# Compile with different INT_BITS
+clang++ -DINT_BITS=64 out.cpp -o out    # 64-bit integers
+clang++ -DINT_BITS=128 out.cpp -o out   # 128-bit integers
+clang++ out.cpp -o out                   # bigint (default)
+```
+
+**Why other settings are compile-time only:**
+
+- `ARG_COUNT`: Determines variable declarations. Could be made flexible with array-based args, but adds complexity for little benefit.
+- `LIMB_BITS`: Affects bigint `Raw` struct layout. Runtime flexibility would require runtime dispatch or multiple code paths.
+- LLVM backend `INT_BITS`: The IR type (`i64`, `i128`, `ptr`) is baked into every instruction. Would require `--int-bits` CLI option to generate different IR.
+
+**Potential future enhancements:**
+
+- `--int-bits=N` and `--arg-count=N` CLI options for the compiler (both backends)
+- `--arg-count=N` for the interpreter (straightforward, no performance impact)
+- `--int-bits=N` for the interpreter would require runtime dispatch via `std::variant` (adds overhead)
 
 ### Fixed-Width (`INT_BITS > 0`)
 

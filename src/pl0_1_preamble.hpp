@@ -56,10 +56,14 @@ entry:)", I, ret, dig);
 }
 
 // C++ preamble - unified runtime interface
+// INT_BITS can be overridden via -D on the clang++ line
 inline void cpp_preamble(bool = false) {
-    if (INT_BITS == 0) {
-        std::print(R"(#include "pl0_1_bigint.hpp"
-// Unified runtime interface for bigint
+    std::puts(R"(#ifndef INT_BITS
+#define INT_BITS 0
+#endif
+
+#if INT_BITS == 0
+#include "pl0_1_bigint.hpp"
 #define VAR(name) bigint::Raw* name = nullptr; bigint::Size name##_cap = 0; bigint::var_init(&name, &name##_cap)
 #define ARG(name, idx) bigint::Raw* name = nullptr; bigint::Size name##_cap = 0; bigint::arg_init(&name, &name##_cap, argc, argv, idx)
 #define ASSIGN(name, val) bigint::assign(&name, &name##_cap, val)
@@ -69,22 +73,21 @@ inline void cpp_preamble(bool = false) {
 #define NEG(name, a) BIGINT_TMP(name, (a)->size); bigint::neg(name, a)
 #define ADD(name, a, b) BIGINT_TMP(name, bigint::add_size(a, b)); bigint::add(name, a, b)
 #define SUB(name, a, b) BIGINT_TMP(name, bigint::sub_size(a, b)); bigint::sub(name, a, b)
-)");
-    } else {
-        std::print("#include <print>\n#include <cstdlib>\n");
-        std::print("using Int = _BitInt({});\n", INT_BITS);
-        std::print("std::string to_string(Int v) {{ if (!v) return \"0\"; std::string s; bool n = v < 0; if (n) v = -v; while (v) {{ s = char('0' + v % 10) + s; v /= 10; }} return n ? \"-\" + s : s; }}\n");
-        std::print("// Unified runtime interface for fixed-width\n");
-        std::print("#define VAR(name) Int name = 0\n");
-        std::print("#define ARG(name, idx) Int name = argc > idx ? std::atoll(argv[idx]) : 0\n");
-        std::print("#define ASSIGN(name, val) name = (val)\n");
-        std::print("#define IS_ZERO(x) ((x) == 0)\n");
-        std::print("#define PRINT(x) std::print(\"{{}}\\n\", to_string(x))\n");
-        std::print("#define LIT(name, v) Int name = (v)\n");
-        std::print("#define NEG(name, a) Int name = -(a)\n");
-        std::print("#define ADD(name, a, b) Int name = (a) + (b)\n");
-        std::print("#define SUB(name, a, b) Int name = (a) - (b)\n");
-    }
+#else
+#include <print>
+#include <cstdlib>
+using Int = _BitInt(INT_BITS);
+inline std::string to_string(Int v) { if (!v) return "0"; std::string s; bool n = v < 0; if (n) v = -v; while (v) { s = char('0' + v % 10) + s; v /= 10; } return n ? "-" + s : s; }
+#define VAR(name) Int name = 0
+#define ARG(name, idx) Int name = argc > idx ? std::atoll(argv[idx]) : 0
+#define ASSIGN(name, val) name = (val)
+#define IS_ZERO(x) ((x) == 0)
+#define PRINT(x) std::print("{}\n", to_string(x))
+#define LIT(name, v) Int name = (v)
+#define NEG(name, a) Int name = -(a)
+#define ADD(name, a, b) Int name = (a) + (b)
+#define SUB(name, a, b) Int name = (a) - (b)
+#endif)");
 }
 
 // Emit argument parsing

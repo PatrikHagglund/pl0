@@ -22,6 +22,7 @@ template <class... Args> std::string f(std::format_string<Args...> fmt, Args &&.
     return std::format(fmt, std::forward<Args>(args)...);
 }
 
+// Collect user-defined variables (excludes argN)
 auto collect_vars(std::vector<StmtPtr> &prog) {
     std::unordered_set<std::string> vars;
     auto go = [&](auto &&go, Stmt *s) -> void {
