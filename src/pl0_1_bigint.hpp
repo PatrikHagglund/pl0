@@ -11,24 +11,30 @@
 namespace bigint {
 
 // --- Limb abstraction ---
-// To use 128-bit limbs: Limb=__uint128_t, SLimb=__int128_t, DLimb=unsigned _BitInt(256), LimbBits=128
-using Limb = uint64_t;
-using SLimb = int64_t;
-using DLimb = __uint128_t;
-inline constexpr int LimbBits = 64;
+// Configure via LIMB_BITS macro (default 64). DLimb must be 2x Limb width.
+// Note: LIMB_BITS=256+ has very slow runtime for LLVM IR backend.
+#ifndef LIMB_BITS
+#define LIMB_BITS 64
+#endif
+
+using Limb = unsigned _BitInt(LIMB_BITS);
+using SLimb = signed _BitInt(LIMB_BITS);
+using DLimb = unsigned _BitInt(LIMB_BITS * 2);
+
+inline constexpr int LimbBits = LIMB_BITS;
 inline constexpr Limb Limb0 = 0;
 using Size = uint32_t;
 
 // --- Limb-width dependent carry/borrow operations ---
 inline Limb addc(Limb a, Limb b, Limb carry_in, Limb* carry_out) {
-    if constexpr (sizeof(Limb) == 8) {
+    if constexpr (LIMB_BITS == 64) {
         unsigned long co;
-        auto r = __builtin_addcl(a, b, carry_in, &co);
+        auto r = __builtin_addcl(static_cast<unsigned long>(a), static_cast<unsigned long>(b), carry_in, &co);
         *carry_out = co;
         return r;
-    } else if constexpr (sizeof(Limb) == 4) {
+    } else if constexpr (LIMB_BITS == 32) {
         unsigned co;
-        auto r = __builtin_addc(a, b, carry_in, &co);
+        auto r = __builtin_addc(static_cast<unsigned>(a), static_cast<unsigned>(b), carry_in, &co);
         *carry_out = co;
         return r;
     } else {
@@ -39,14 +45,14 @@ inline Limb addc(Limb a, Limb b, Limb carry_in, Limb* carry_out) {
 }
 
 inline Limb subc(Limb a, Limb b, Limb borrow_in, Limb* borrow_out) {
-    if constexpr (sizeof(Limb) == 8) {
+    if constexpr (LIMB_BITS == 64) {
         unsigned long bo;
-        auto r = __builtin_subcl(a, b, borrow_in, &bo);
+        auto r = __builtin_subcl(static_cast<unsigned long>(a), static_cast<unsigned long>(b), borrow_in, &bo);
         *borrow_out = bo;
         return r;
-    } else if constexpr (sizeof(Limb) == 4) {
+    } else if constexpr (LIMB_BITS == 32) {
         unsigned bo;
-        auto r = __builtin_subc(a, b, borrow_in, &bo);
+        auto r = __builtin_subc(static_cast<unsigned>(a), static_cast<unsigned>(b), borrow_in, &bo);
         *borrow_out = bo;
         return r;
     } else {

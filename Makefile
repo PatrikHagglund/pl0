@@ -90,7 +90,7 @@ run-llvm-native: $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll
 	$(RUN) sh -c "./pl0_1_compile --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && clang -Wno-override-module -O3 out.ll -o out && ./out"
 
 src/pl0_1_rt_bigint.ll: src/pl0_1_rt_bigint.cpp $(IMAGE_DEPS)
-	$(RUN) clang++ -std=c++26 -S -emit-llvm -O3 $< -o $@
+	$(RUN) clang++ -std=c++26 -Wno-vla-cxx-extension -S -emit-llvm -O3 $< -o $@
 
 clean:
 	rm -rf $(TARGET) $(TARGET_COMPILE) out.ll out out.cpp out-O0 src/.koka src/pl0peg1 src/pl01
@@ -108,6 +108,36 @@ bench-1: $(TARGET) $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll src/pl0peg1 src/pl01
 	@echo "=== C++ interpreter ===" && $(RUN) sh -c "time ./$(TARGET) $(BENCH_1) $(BENCH_1_ARGS)"
 	@echo "=== Koka interpreter ===" && $(RUN) sh -c "time ./src/pl01 $(BENCH_1) $(BENCH_1_ARGS)"
 	@echo "=== Koka PEG interpreter ===" && $(RUN) sh -c "time ./src/pl0peg1 $(BENCH_1) $(BENCH_1_ARGS)"
+
+# Benchmark comparing INT_BITS settings (no Koka)
+# For INT_BITS=0, also tests different LIMB_BITS values
+BENCH_INTBITS_BITS ?= 0 64
+BENCH_LIMB_BITS ?= 32 64 128
+bench-intbits: $(IMAGE_DEPS)
+	@for bits in $(BENCH_INTBITS_BITS); do \
+		if [ "$$bits" = "0" ]; then \
+			for limb in $(BENCH_LIMB_BITS); do \
+				echo ""; echo "========== INT_BITS=0, LIMB_BITS=$$limb =========="; \
+				$(RUN) clang++ -std=c++26 -Wno-vla-cxx-extension -DLIMB_BITS=$$limb -S -emit-llvm -O3 src/pl0_1_rt_bigint.cpp -o src/pl0_1_rt_bigint.ll; \
+				$(CXX) $(CXXFLAGS) -DINT_BITS=0 -DLIMB_BITS=$$limb -O3 -o $(TARGET) $(SRC); \
+				$(CXX) $(CXXFLAGS) -DINT_BITS=0 -DLIMB_BITS=$$limb -O3 -o $(TARGET_COMPILE) $(SRC_COMPILE); \
+				$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -DLIMB_BITS=$$limb -O3 -I src out.cpp -o out_cpp"; \
+				echo "=== C++ backend ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_1_ARGS)"; \
+				$(RUN) sh -c "./$(TARGET_COMPILE) --llvm $(BENCH_1) > /tmp/prog.ll && $(LLVM_LINK)"; \
+				echo "=== LLVM backend ===" && $(RUN) sh -c "clang -Wno-override-module -O3 out.ll -o out && time ./out $(BENCH_1_ARGS)"; \
+				echo "=== C++ interpreter ===" && $(RUN) sh -c "time ./$(TARGET) $(BENCH_1) $(BENCH_1_ARGS)"; \
+			done; \
+		else \
+			echo ""; echo "========== INT_BITS=$$bits =========="; \
+			$(CXX) $(CXXFLAGS) -DINT_BITS=$$bits -O3 -o $(TARGET) $(SRC); \
+			$(CXX) $(CXXFLAGS) -DINT_BITS=$$bits -O3 -o $(TARGET_COMPILE) $(SRC_COMPILE); \
+			$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src out.cpp -o out_cpp"; \
+			echo "=== C++ backend ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_1_ARGS)"; \
+			$(RUN) sh -c "./$(TARGET_COMPILE) --llvm $(BENCH_1) > out.ll"; \
+			echo "=== LLVM backend ===" && $(RUN) sh -c "clang -Wno-override-module -O3 out.ll -o out && time ./out $(BENCH_1_ARGS)"; \
+			echo "=== C++ interpreter ===" && $(RUN) sh -c "time ./$(TARGET) $(BENCH_1) $(BENCH_1_ARGS)"; \
+		fi; \
+	done
 
 src/pl0peg1: src/pl0peg1.koka src/peg.koka $(IMAGE_DEPS)
 	$(KOKA) -O3 --compile src/peg.koka 2>/dev/null
@@ -189,8 +219,8 @@ help:
 	@echo "Current: $(BUILD_MODE)"
 	@echo ""
 	@echo "Usage: make [BUILD_MODE=<mode>] [target]"
-	@echo "Targets: all, test, bench-1, clean, help"
+	@echo "Targets: all, test, bench-1, bench-intbits, clean, help"
 	@echo ""
 	@echo "Setup: . ./setup.sh  (or run ./setup.sh for info)"
 
-.PHONY: run run-llvm run-llvm-native clean bench-1 koka-pl0 koka-peg koka-peg0 koka-peg-test test help
+.PHONY: run run-llvm run-llvm-native clean bench-1 bench-intbits koka-pl0 koka-peg koka-peg0 koka-peg-test test help
