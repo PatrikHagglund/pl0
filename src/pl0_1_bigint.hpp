@@ -184,7 +184,8 @@ inline void print(const Raw* v) {
     auto* tmp = static_cast<Limb*>(std::malloc(v->size * sizeof(Limb)));
     Size n = v->size;
     std::memcpy(tmp, v->limbs, n * sizeof(Limb));
-    Size buf_cap = n * 20 + 1;  // ~19.3 decimal digits per 64-bit limb
+    // ~0.302 decimal digits per bit (log10(2)), round up to 0.31
+    Size buf_cap = (n * LimbBits * 31 + 99) / 100 + 1;
     auto* buf = static_cast<char*>(std::malloc(buf_cap));
     Size pos = 0;
     while (n > 0) {
@@ -204,9 +205,10 @@ inline void print(const Raw* v) {
 // --- Heap allocation helpers (for compiled code with unlimited size) ---
 
 inline void var_init(Raw** var_ptr, Size* cap_ptr) {
-    auto* p = static_cast<Raw*>(std::malloc(sizeof(Raw)));
+    Size cap = Raw::buf_size(1);  // space for at least 1 limb
+    auto* p = static_cast<Raw*>(std::malloc(cap));
     *var_ptr = p;
-    *cap_ptr = sizeof(Raw);
+    *cap_ptr = cap;
     p->size = 0;
     p->neg = false;
 }

@@ -58,7 +58,9 @@ ifneq ($(BUILD_MODE),native)
 	$(BUILD_CMD)
 	touch .image
 endif
-CXXFLAGS = -std=gnu++26 -Wall -Wextra -Werror -Wno-vla-cxx-extension
+CXXSTD = -std=gnu++26
+OPT = -O3
+CXXFLAGS = $(CXXSTD) $(OPT) -Wall -Wextra -Werror -Wno-vla-cxx-extension
 
 TARGET = pl0_1
 SRC = src/pl0_1.cpp
@@ -68,42 +70,46 @@ TARGET_COMPILE = pl0_1_compile
 SRC_COMPILE = src/pl0_1_compile.cpp
 
 $(TARGET): $(SRC) $(HDR) $(IMAGE_DEPS)
-	$(CXX) $(CXXFLAGS) -O3 -o $@ $<
+	$(CXX) $(CXXFLAGS) -o $@ $<
 
 $(TARGET_COMPILE): $(SRC_COMPILE) $(HDR) $(IMAGE_DEPS)
-	$(CXX) $(CXXFLAGS) -O3 -o $@ $<
+	$(CXX) $(CXXFLAGS) -o $@ $<
 
 all: $(TARGET) $(TARGET_COMPILE)
+
+# Common compile commands for generated code
+CLANGXX_OUT = clang++ $(CXXSTD) -Wno-vla-cxx-extension $(OPT) -I src
+CLANG_LL = clang -Wno-override-module $(OPT)
+LLVM_LINK = llvm-link /tmp/prog.ll src/pl0_1_rt_bigint.ll -S -o out.ll
 
 run: $(TARGET)
 	$(RUN) ./$(TARGET) examples/example_0.pl0
 
 run-compile: $(TARGET_COMPILE)
-	$(RUN) sh -c "./$(TARGET_COMPILE) examples/example_0.pl0 > out.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src out.cpp -o out && ./out"
-
-LLVM_LINK = llvm-link /tmp/prog.ll src/pl0_1_rt_bigint.ll -S -o out.ll
+	$(RUN) sh -c "./$(TARGET_COMPILE) examples/example_0.pl0 > out.cpp && $(CLANGXX_OUT) out.cpp -o out && ./out"
 
 run-llvm: $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll
 	$(RUN) sh -c "./pl0_1_compile --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && lli out.ll"
 
 run-llvm-native: $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll
-	$(RUN) sh -c "./pl0_1_compile --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && clang -Wno-override-module -O3 out.ll -o out && ./out"
+	$(RUN) sh -c "./pl0_1_compile --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && $(CLANG_LL) out.ll -o out && ./out"
 
 src/pl0_1_rt_bigint.ll: src/pl0_1_rt_bigint.cpp $(IMAGE_DEPS)
-	$(RUN) clang++ -std=c++26 -Wno-vla-cxx-extension -S -emit-llvm -O3 $< -o $@
+	$(RUN) clang++ $(CXXSTD) -Wno-vla-cxx-extension -S -emit-llvm $(OPT) $< -o $@
 
 clean:
 	rm -rf $(TARGET) $(TARGET_COMPILE) out.ll out out.cpp out-O0 src/.koka src/pl0peg1 src/pl01
 
 BENCH_1 = examples/bench_1_factorial.pl0
-BENCH_1_ARGS = 2000 31
+BENCH_1_ITERS = 10000
+BENCH_1_N = 31
+BENCH_1_ARGS = $(BENCH_1_ITERS) $(BENCH_1_N)
 
 bench-1: $(TARGET) $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll src/pl0peg1 src/pl01
-	@# All compiled code uses -O3 optimization
-	@$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src out.cpp -o out_cpp"
+	@$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && $(CLANGXX_OUT) out.cpp -o out_cpp"
 	@echo "=== C++ backend ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_1_ARGS)"
 	@$(RUN) sh -c "./$(TARGET_COMPILE) --llvm $(BENCH_1) > /tmp/prog.ll && $(LLVM_LINK)"
-	@echo "=== LLVM backend ===" && $(RUN) sh -c "clang -Wno-override-module -O3 out.ll -o out && time ./out $(BENCH_1_ARGS)"
+	@echo "=== LLVM backend ===" && $(RUN) sh -c "$(CLANG_LL) out.ll -o out && time ./out $(BENCH_1_ARGS)"
 	@echo "=== LLVM lli (JIT) ===" && $(RUN) sh -c "time lli out.ll $(BENCH_1_ARGS)" || true
 	@echo "=== C++ interpreter ===" && $(RUN) sh -c "time ./$(TARGET) $(BENCH_1) $(BENCH_1_ARGS)"
 	@echo "=== Koka interpreter ===" && $(RUN) sh -c "time ./src/pl01 $(BENCH_1) $(BENCH_1_ARGS)"
@@ -111,30 +117,32 @@ bench-1: $(TARGET) $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll src/pl0peg1 src/pl01
 
 # Benchmark comparing INT_BITS settings (no Koka)
 # For INT_BITS=0, also tests different LIMB_BITS values
-BENCH_INTBITS_BITS ?= 0 64
+# Note: LLVM backend may be faster for fixed INT_BITS due to loop idiom recognition
+# (converts repeated addition to multiply) which _BitInt in C++ backend doesn't get
+BENCH_INTBITS_BITS ?= 0 64 512
 BENCH_LIMB_BITS ?= 32 64 128
 bench-intbits: $(IMAGE_DEPS)
 	@for bits in $(BENCH_INTBITS_BITS); do \
 		if [ "$$bits" = "0" ]; then \
 			for limb in $(BENCH_LIMB_BITS); do \
 				echo ""; echo "========== INT_BITS=0, LIMB_BITS=$$limb =========="; \
-				$(RUN) clang++ -std=c++26 -Wno-vla-cxx-extension -DLIMB_BITS=$$limb -S -emit-llvm -O3 src/pl0_1_rt_bigint.cpp -o src/pl0_1_rt_bigint.ll; \
-				$(CXX) $(CXXFLAGS) -DINT_BITS=0 -DLIMB_BITS=$$limb -O3 -o $(TARGET) $(SRC); \
-				$(CXX) $(CXXFLAGS) -DINT_BITS=0 -DLIMB_BITS=$$limb -O3 -o $(TARGET_COMPILE) $(SRC_COMPILE); \
-				$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -DLIMB_BITS=$$limb -O3 -I src out.cpp -o out_cpp"; \
+				$(RUN) clang++ $(CXXSTD) -Wno-vla-cxx-extension -DLIMB_BITS=$$limb -S -emit-llvm $(OPT) src/pl0_1_rt_bigint.cpp -o src/pl0_1_rt_bigint.ll; \
+				$(CXX) $(CXXFLAGS) -DINT_BITS=0 -DLIMB_BITS=$$limb -o $(TARGET) $(SRC); \
+				$(CXX) $(CXXFLAGS) -DINT_BITS=0 -DLIMB_BITS=$$limb -o $(TARGET_COMPILE) $(SRC_COMPILE); \
+				$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && $(CLANGXX_OUT) -DLIMB_BITS=$$limb out.cpp -o out_cpp"; \
 				echo "=== C++ backend ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_1_ARGS)"; \
 				$(RUN) sh -c "./$(TARGET_COMPILE) --llvm $(BENCH_1) > /tmp/prog.ll && $(LLVM_LINK)"; \
-				echo "=== LLVM backend ===" && $(RUN) sh -c "clang -Wno-override-module -O3 out.ll -o out && time ./out $(BENCH_1_ARGS)"; \
+				echo "=== LLVM backend ===" && $(RUN) sh -c "$(CLANG_LL) out.ll -o out && time ./out $(BENCH_1_ARGS)"; \
 				echo "=== C++ interpreter ===" && $(RUN) sh -c "time ./$(TARGET) $(BENCH_1) $(BENCH_1_ARGS)"; \
 			done; \
 		else \
 			echo ""; echo "========== INT_BITS=$$bits =========="; \
-			$(CXX) $(CXXFLAGS) -DINT_BITS=$$bits -O3 -o $(TARGET) $(SRC); \
-			$(CXX) $(CXXFLAGS) -DINT_BITS=$$bits -O3 -o $(TARGET_COMPILE) $(SRC_COMPILE); \
-			$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src out.cpp -o out_cpp"; \
+			$(CXX) $(CXXFLAGS) -DINT_BITS=$$bits -o $(TARGET) $(SRC); \
+			$(CXX) $(CXXFLAGS) -DINT_BITS=$$bits -o $(TARGET_COMPILE) $(SRC_COMPILE); \
+			$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && $(CLANGXX_OUT) out.cpp -o out_cpp"; \
 			echo "=== C++ backend ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_1_ARGS)"; \
 			$(RUN) sh -c "./$(TARGET_COMPILE) --llvm $(BENCH_1) > out.ll"; \
-			echo "=== LLVM backend ===" && $(RUN) sh -c "clang -Wno-override-module -O3 out.ll -o out && time ./out $(BENCH_1_ARGS)"; \
+			echo "=== LLVM backend ===" && $(RUN) sh -c "$(CLANG_LL) out.ll -o out && time ./out $(BENCH_1_ARGS)"; \
 			echo "=== C++ interpreter ===" && $(RUN) sh -c "time ./$(TARGET) $(BENCH_1) $(BENCH_1_ARGS)"; \
 		fi; \
 	done
