@@ -125,19 +125,6 @@ fun default-action(name: string, txt: string, children: list<semval>, caps: capt
     Cons(c, Nil) -> c  // Single child: pass through
     _ -> SVList(children)
 
-// Action for integer literals
-fun act-int-lit(name: string, txt: string, children: list<semval>, caps: captures<semval>): semval
-  // Extract just the digits, ignoring trailing whitespace/comments
-  val digits = txt.list.take-while(fn(c) c.is-digit).string
-  val n = digits.parse-int.default(0)
-  SVExpr(fn(_) n)
-
-// Action for identifiers
-fun act-ident(name: string, txt: string, children: list<semval>, caps: captures<semval>): semval
-  // Extract just the identifier (letter followed by alphanums/underscores), ignoring trailing whitespace/comments
-  val id = txt.list.take-while(fn(c) c.is-alpha || c.is-digit || c == '_').string
-  SVIdent(id)
-
 // Action for variable reference (in expression context)
 fun act-var-expr(id: string): semval
   SVExpr(fn(e) env-get(e, id))
@@ -198,7 +185,6 @@ fun flatten-sv(vs: list<semval>): list<semval>
 // Action for sum expressions (handles + and -)
 fun act-sum-expr(name: string, txt: string, children: list<semval>, caps: captures<semval>): semval
   // sum_expr = unary (("+" / "-") _ unary)*
-  // Recursively flatten children to extract exprs and ops
   val all-children = flatten-sv(children)
 
   // Collect expressions and operators in order
@@ -228,70 +214,6 @@ fun act-expression(name: string, txt: string, children: list<semval>, caps: capt
   match children
     Cons(c, _) -> c
     _ -> SVExpr(fn(_) 0)
-
-// Helper for binding
-fun make-assign(id: string, f: (env) -> <div> int): semval
-  SVStmt(fn(e) env-set(e, id, f(e)))
-
-fun make-decl(id: string): semval
-  SVStmt(fn(e) env-set(e, id, 0))
-
-// Action for binding statements
-// Uses named captures: id:ident, e:expression
-fun act-binding(name: string, txt: string, children: list<semval>, caps: captures<semval>): semval
-  // Try named captures first
-  val id-cap = capture-get(caps, "id")
-  val e-cap = capture-get(caps, "e")
-  
-  match (id-cap, e-cap)
-    (Just(SVIdent(id)), Just(SVExpr(f))) -> make-assign(id, f)
-    (Just(SVIdent(id)), Nothing) -> make-decl(id)
-    _ ->
-      // Fallback to old behavior for compatibility
-      val all-children = flatten-sv(children)
-      val id = all-children.filter-map(fn(c) match c { SVIdent(s) -> Just(s); _ -> Nothing }).head.default("")
-      val expr-opt = all-children.filter-map fn(c)
-        match c
-          SVExpr(f) -> Just(f)
-          _ -> Nothing
-      match expr-opt.head
-        Just(f) -> make-assign(id, f)
-        Nothing -> make-decl(id)
-
-// Action for print statements
-fun act-print(name: string, txt: string, children: list<semval>, caps: captures<semval>): semval
-  val all-children = flatten-sv(children)
-
-  val expr-opt = all-children.filter(fn(c) match c { SVExpr(_) -> True; _ -> False }).head
-  match expr-opt
-    Just(SVExpr(f)) -> SVStmt fn(e)
-      println(f(e).show)
-      e
-    _ -> SVStmt(fn(e) e)
-
-// Action for break_if statements
-fun act-break-if(name: string, txt: string, children: list<semval>, caps: captures<semval>): semval
-  val all-children = flatten-sv(children)
-
-  val expr-opt = all-children.filter(fn(c) match c { SVExpr(_) -> True; _ -> False }).head
-  match expr-opt
-    Just(SVExpr(f)) -> SVStmt fn(e)
-      if f(e) == 0 then do-break(e) else e
-    _ -> SVStmt(fn(e) e)
-
-// Forward declaration for mutual recursion
-fun exec-stmt-thunk(f: (env) -> <div,console,loop-break> env, e: env): <div,console,loop-break> env
-  f(e)
-
-// Action for loop statements
-fun act-loop(name: string, txt: string, children: list<semval>, caps: captures<semval>): semval
-  val all-children = flatten-sv(children)
-
-  val body-opt = all-children.filter(fn(c) match c { SVStmt(_) -> True; _ -> False }).head
-  match body-opt
-    Just(SVStmt(body)) -> SVStmt fn(e)
-      exec-loop-thunk(e, body)
-    _ -> SVStmt(fn(e) e)
 
 fun exec-loop-thunk(e: env, body: (env) -> <div,console,loop-break> env): <div,console,loop-break> env
   with ctl do-break(e1) e1
