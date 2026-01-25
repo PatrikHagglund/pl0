@@ -32,11 +32,13 @@ make help         # Show all options
 **Run implementations:**
 ```bash
 make koka-e1        # Koka interpreter (e1)
-make koka-peg       # Koka PEG interpreter (e1)
-make koka-peg2      # Koka PEG interpreter (e2)
-make run            # C++ interpreter
-make run-compile    # C++ compiler (C++ backend)
-make run-llvm       # C++ compiler (LLVM JIT)
+make koka-peg-e0    # Koka PEG interpreter (e0)
+make koka-peg-e1    # Koka PEG interpreter (e1)
+make koka-peg-e2    # Koka PEG interpreter (e2)
+make cpp-e1         # C++ interpreter
+make cpp-e1-cpp     # C++ compiler (C++ backend)
+make cpp-e1-llvm    # C++ compiler (LLVM native)
+make cpp-e1-llvmjit # C++ compiler (LLVM JIT)
 ```
 
 **Native setup** (optional — alternatively, tools are installed in a container):

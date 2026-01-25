@@ -29,14 +29,14 @@ make koka-e1
 No AST — semantic actions during parsing produce thunks. Uses packrat memoization.
 
 ```bash
-make koka-peg
+make koka-peg-e1
 ```
 
 **`e2peg.koka` — Single-Phase (e2):**
 Extends e1peg with case statements, comparisons, and multiplication/division.
 
 ```bash
-make koka-peg2
+make koka-peg-e2
 ```
 
 Both use algebraic effects for `break`:
@@ -50,7 +50,7 @@ effect loop-break
 Hand-written lexer and recursive descent parser, AST-based execution.
 
 ```bash
-make run
+make cpp-e1
 ```
 
 ## Compiler (`e1_compile.cpp`)
@@ -63,9 +63,9 @@ Two backends from a single code generator:
 | LLVM IR | `.ll` file | `./e1_compile --llvm prog.e1` |
 
 ```bash
-make run-compile      # C++ backend
-make run-llvm         # LLVM JIT
-make run-llvm-native  # LLVM native
+make cpp-e1-cpp     # C++ backend
+make cpp-e1-llvmjit # LLVM JIT
+make cpp-e1-llvm    # LLVM native
 ```
 
 ## Integer Configuration

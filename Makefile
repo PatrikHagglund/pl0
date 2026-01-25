@@ -86,16 +86,16 @@ CLANGXX_OUT = clang++ $(CXXSTD) -Wno-vla-cxx-extension $(OPT) -I src
 CLANG_LL = clang -Wno-override-module $(OPT)
 LLVM_LINK = llvm-link /tmp/prog.ll src/e1_rt_bigint.ll -S -o out.ll
 
-run: $(TARGET)
+cpp-e1: $(TARGET)
 	$(RUN) ./$(TARGET) examples/example.e0
 
-run-compile: $(TARGET_COMPILE)
+cpp-e1-cpp: $(TARGET_COMPILE)
 	$(RUN) sh -c "./$(TARGET_COMPILE) examples/example.e0 > out.cpp && $(CLANGXX_OUT) out.cpp -o out && ./out"
 
-run-llvm: $(TARGET_COMPILE) src/e1_rt_bigint.ll
+cpp-e1-llvmjit: $(TARGET_COMPILE) src/e1_rt_bigint.ll
 	$(RUN) sh -c "./e1_compile --llvm examples/example.e0 > /tmp/prog.ll && $(LLVM_LINK) && lli out.ll"
 
-run-llvm-native: $(TARGET_COMPILE) src/e1_rt_bigint.ll
+cpp-e1-llvm: $(TARGET_COMPILE) src/e1_rt_bigint.ll
 	$(RUN) sh -c "./e1_compile --llvm examples/example.e0 > /tmp/prog.ll && $(LLVM_LINK) && $(CLANG_LL) out.ll -o out && ./out"
 
 src/e1_rt_bigint.ll: src/e1_rt_bigint.cpp $(IMAGE_DEPS)
@@ -168,10 +168,10 @@ src/e1: src/e1.koka src/e1-types.koka src/e1-parser.koka src/e1-eval.koka $(IMAG
 koka-e1: $(IMAGE_DEPS)
 	$(RUN) sh -c "koka -l src/e1-types.koka && koka -l src/e1-parser.koka && koka -l src/e1-eval.koka && koka -e src/e1.koka -- $(FILE)"
 
-koka-peg: $(IMAGE_DEPS)
+koka-peg-e1: $(IMAGE_DEPS)
 	$(RUN) sh -c "koka --compile src/peg.koka && koka -e src/e1peg.koka -- examples/example.e1"
 
-koka-peg2: $(IMAGE_DEPS)
+koka-peg-e2: $(IMAGE_DEPS)
 	$(RUN) sh -c "koka --compile src/peg.koka && koka -e src/e2peg.koka -- examples/example.e2"
 
 src/e2peg: src/e2peg.koka src/peg.koka $(IMAGE_DEPS)
@@ -179,7 +179,7 @@ src/e2peg: src/e2peg.koka src/peg.koka $(IMAGE_DEPS)
 	$(KOKA) $(KOKA_OPT) -o src/e2peg src/e2peg.koka 2>/dev/null
 	chmod +x src/e2peg
 
-koka-peg0: $(IMAGE_DEPS)
+koka-peg-e0: $(IMAGE_DEPS)
 	$(RUN) sh -c "koka --compile src/peg.koka && koka -e src/e0peg.koka -- examples/example.e0"
 
 koka-peg-test: $(IMAGE_DEPS)
@@ -241,8 +241,17 @@ help:
 	@echo "Current: $(BUILD_MODE)"
 	@echo ""
 	@echo "Usage: make [BUILD_MODE=<mode>] [target]"
-	@echo "Targets: all, test, bench-1, bench-intbits, clean, help"
 	@echo ""
-	@echo "Setup: . ./setup.sh  (or run ./setup.sh for info)"
+	@echo "Run targets:"
+	@echo "  cpp-e1         C++ interpreter (e1)"
+	@echo "  cpp-e1-cpp     C++ compiler, C++ backend (e1)"
+	@echo "  cpp-e1-llvm    C++ compiler, LLVM native (e1)"
+	@echo "  cpp-e1-llvmjit C++ compiler, LLVM JIT (e1)"
+	@echo "  koka-e1        Koka interpreter (e1)"
+	@echo "  koka-peg-e0    Koka PEG interpreter (e0)"
+	@echo "  koka-peg-e1    Koka PEG interpreter (e1)"
+	@echo "  koka-peg-e2    Koka PEG interpreter (e2)"
+	@echo ""
+	@echo "Other: all, test, bench, bench-intbits, clean"
 
-.PHONY: run run-llvm run-llvm-native clean bench bench-intbits koka-e1 koka-peg koka-peg0 koka-peg2 koka-peg-test test help
+.PHONY: cpp-e1 cpp-e1-cpp cpp-e1-llvm cpp-e1-llvmjit clean bench bench-intbits koka-e1 koka-peg-e0 koka-peg-e1 koka-peg-e2 koka-peg-test test help
