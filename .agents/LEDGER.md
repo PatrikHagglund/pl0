@@ -33,6 +33,7 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - Other levels (pl0_2 through pl0_6) have PEG grammars and examples but no interpreters
 
 ## Next
+- Add memoization to PEG semantic-action mode (thread memo table through peg-exec-match)
 - Rename the pl0 languages to "E" or "e" (standing for "explore", but perhaps later for "expressive" and "efficient")?
 - Support for "syntactic sugar"?
 - Explore papers about efficient interpreters.

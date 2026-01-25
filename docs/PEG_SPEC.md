@@ -141,9 +141,28 @@ loop_stmt  = "loop" _ body:statement { Loop($body) }
 
 - Backtracking via Koka's `peg-fail` effect
 - No left-recursion support (will loop infinitely)
-- Memoization available via `*-memo` functions
+- Memoization available via `*-memo` functions (parse-tree mode only, not semantic actions)
 - Inline actions evaluated during `peg-exec*` calls
 - Named captures collected from sequences for inline actions
+- Single-element sequences pass through without wrapping (optimization)
+
+### Nested List Handling
+
+When using `*` with inline actions, each iteration's result may be wrapped in lists:
+```peg
+block = "{" _ (statement ";"? _)* "}" _ { Block }
+```
+
+The `(statement ";"? _)` sequence produces an `SVList` per iteration. The Block handler must flatten these nested structures to extract statements. This is inherent to how sequences collect children.
+
+### Performance
+
+The semantic-action interpreter (`peg-exec*`) is ~14% slower than a two-phase parse-then-execute approach. This overhead comes from:
+- Creating closures/thunks during parsing
+- Nested list wrapping from sequences
+- No memoization (memoization is only implemented for parse-tree mode)
+
+For compute-bound programs, this overhead is negligible since parsing happens once at startup.
 
 ## Future Considerations
 
