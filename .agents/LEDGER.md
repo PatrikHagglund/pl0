@@ -33,7 +33,6 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - Other levels (pl0_2 through pl0_6) have PEG grammars and examples but no interpreters
 
 ## Next
-- Explore (more of a) full embedded action language in PEG (beyond @tag)
 - Rename the pl0 languages to "E" or "e" (standing for "explore", but perhaps later for "expressive" and "efficient")?
 - Support for "syntactic sugar"?
 - Explore papers about efficient interpreters.
@@ -52,6 +51,7 @@ Explore the design and implementation of simple languages. Inspired by PL/0.
 - `LEDGER.md`
 
 ## Done (prune when exceeding 30 items)
+- Added named captures to PEG (`n:pattern` syntax) for binding sub-matches
 - Created `docs/PL0_1_SPEC.md` — language specification for pl0_1
 - Added error handling section to `docs/IMPLEMENTATIONS.md`
 - Explored parse errors in dead code (`examples/test_dead_code*.pl0`):

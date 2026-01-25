@@ -54,6 +54,17 @@ binding = ident ":=" expr  @binding
 | `&e` | And | Succeed if e succeeds (no consume) |
 | `(e)` | Group | Grouping |
 | `name` | Rule | Reference another rule |
+| `n:e` | Capture | Match e, name result as n |
+
+### Named Captures
+
+Named captures allow binding sub-matches to names for use in semantic actions:
+
+```peg
+binding = id:ident ":=" e:expression
+```
+
+The capture name becomes a node name in the parse tree, making it easy to extract specific parts in actions.
 
 ### Whitespace and Comments
 

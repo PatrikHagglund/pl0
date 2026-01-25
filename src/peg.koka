@@ -19,6 +19,7 @@ pub type peg
   PLit(s: string)
   PClass(ranges: list<(char,char)>, negated: bool)
   PRule(name: string)
+  PCapture(name: string, p: peg)  // Named capture: name:pattern
   PAny
 
 // Rule with optional action tag: (name, body, maybe<tag>)
@@ -112,6 +113,15 @@ fun peg-prefix(): <parse,div> peg
   choose([
     { char('!'); PNot(peg-prefix()) },
     { char('&'); PAnd(peg-prefix()) },
+    {
+      // Try named capture: name:pattern
+      val id = peg-ident()
+      peg-ws()
+      char(':')
+      peg-ws()
+      val p = peg-suffix()
+      PCapture(id, p)
+    },
     peg-suffix
   ])
 
@@ -261,6 +271,10 @@ fun peg-match(g: grammar, p: peg, s: pstate): <peg-fail, div> (pstate, ptree)
       val (s1, t1) = peg-match(g, body, s)
       (s1, PNode(name, match t1 { PNode(_, cs, _) -> cs; _ -> [t1] }, s.string.first(s.count - s1.count).string))
 
+    PCapture(name, p1) ->
+      val (s1, t1) = peg-match(g, p1, s)
+      (s1, PNode(name, [t1], s.string.first(s.count - s1.count).string))
+
 fun peg-choice-match(g: grammar, ps: list<peg>, s: pstate): <peg-fail, div> (pstate, ptree)
   match ps
     Nil -> fail()
@@ -362,6 +376,10 @@ fun peg-match-memo(g: grammar, p: peg, s: pstate, memo: memo-table, orig: pstate
             Just((s1, t1)) ->
               (m2, (s1, PNode(name, match t1 { PNode(_, cs, _) -> cs; _ -> [t1] }, s.string.first(s.count - s1.count).string)))
             Nothing -> fail()
+
+    PCapture(name, p1) ->
+      val (m1, (s1, t1)) = peg-match-memo(g, p1, s, memo, orig)
+      (m1, (s1, PNode(name, [t1], s.string.first(s.count - s1.count).string)))
 
 fun peg-choice-match-memo(g: grammar, ps: list<peg>, s: pstate, memo: memo-table, orig: pstate): <peg-fail, div> (memo-table, (pstate, ptree))
   match ps
@@ -509,6 +527,13 @@ fun peg-exec-match(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: psta
       val action-name = tag.default(name)
       val act = action-lookup(acts, action-name, def)
       (s1, act(action-name, txt, [v1]))
+
+    PCapture(name, p1) ->
+      val (s1, v1) = peg-exec-match(g, acts, def, p1, s)
+      val txt = s.string.first(s.count - s1.count).string
+      // Named capture: wrap value with capture name for action lookup
+      val act = action-lookup(acts, "_capture", def)
+      (s1, act(name, txt, [v1]))
 
 fun peg-exec-try(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: pstate): <div> maybe<(pstate, s)>
   with ctl fail() Nothing

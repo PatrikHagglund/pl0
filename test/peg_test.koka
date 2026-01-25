@@ -90,4 +90,18 @@ pub fun main(): <console, div, exn> ()
   val g17 = parse-peg("ws = ([ \\t\\n] / \"//\" (!\"\\n\" .)*)*\nr = ws \"x\" ws")
   test("ws with comment", peg-parse(g17, "r", "// test\nx").is-just)
 
+  // Named captures
+  val g18 = parse-peg("r = a:[a-z]+ \"-\" b:[0-9]+")
+  val res18 = peg-parse(g18, "r", "foo-123")
+  test("named capture parses", res18.is-just)
+  match res18
+    Just(t) ->
+      val a-nodes = ptree-find(t, "a")
+      val b-nodes = ptree-find(t, "b")
+      test("named capture 'a' found", a-nodes.length == 1)
+      test("named capture 'b' found", b-nodes.length == 1)
+      test("named capture 'a' text", a-nodes.head.map(ptree-text).default("") == "foo")
+      test("named capture 'b' text", b-nodes.head.map(ptree-text).default("") == "123")
+    Nothing -> ()
+
   println("\n=== Done ===")
