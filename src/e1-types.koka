@@ -1,4 +1,4 @@
-module pl01-types
+module e1-types
 
 pub type expr
   EInt(n: int)

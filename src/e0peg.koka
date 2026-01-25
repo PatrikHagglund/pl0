@@ -2,7 +2,7 @@
 // Single-phase: semantic actions execute during parsing (no AST)
 // Sequential only - no loops, no control flow (NOT Turing-complete)
 
-module pl0peg0
+module e0peg
 
 import src/peg
 import std/os/file
@@ -90,7 +90,7 @@ pub fun main()
   val arg2-val = match args { Cons(_, Cons(_, Cons(n, _))) -> n.parse-int.default(0); _ -> 0 }
 
   "Starting (direct execution, no AST)...".println
-  val grammar-text = read-text-file("src/pl0_0.peg".path)
+  val grammar-text = read-text-file("src/e0.peg".path)
   ("Grammar file read: " ++ grammar-text.count.int/show ++ " chars").println
   val g = parse-peg(grammar-text)
   println("Grammar loaded: " ++ g.length.int/show ++ " rules")

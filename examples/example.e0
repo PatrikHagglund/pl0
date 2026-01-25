@@ -1,4 +1,4 @@
-// Demonstrating pl0_0 (sequential computation, + - only)
+// Demonstrating e0 (sequential computation, + - only)
 a := 3
 b := 4
 sum := a + b

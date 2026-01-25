@@ -127,7 +127,7 @@ capture-get(caps, name): maybe<s>
 
 ## Example
 
-Grammar with inline actions (`pl0_1.peg`):
+Grammar with inline actions (`e1.peg`):
 ```peg
 int_lit    = digit+ _ { Int($0) }
 ident      = !keyword letter idchar* _ { Ident($0) }

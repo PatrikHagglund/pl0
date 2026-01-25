@@ -1,7 +1,7 @@
-// Emulating pl0_5 features using only pl0_4 primitives
-// pl0_4 has: arrays and pattern matching
+// Emulating e5 features using only e4 primitives
+// e4 has: arrays and pattern matching
 
-// --- pl0_4 new: arrays and pattern matching ---
+// --- e4 new: arrays and pattern matching ---
 nums := (1; 2; 3;)
 second := nums.1
 first :

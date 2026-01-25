@@ -1,6 +1,6 @@
 // PL/0 Level 1 Compiler - Runtime preambles for code generation
 #pragma once
-#include "pl0_1.hpp"
+#include "e1.hpp"
 
 // LLVM IR preamble for bigint (INT_BITS=0)
 constexpr auto LLVM_BIGINT_PREAMBLE = R"(; Bigint runtime (heap vars, stack temps)
@@ -63,7 +63,7 @@ inline void cpp_preamble(bool = false) {
 #endif
 
 #if INT_BITS == 0
-#include "pl0_1_bigint.hpp"
+#include "e1_bigint.hpp"
 #define VAR(name) auto name##_v = bigint::var_init()
 #define ARG(name, idx) auto name##_v = bigint::arg_init(argc, argv, idx)
 #define REF(name) (*name##_v.ptr)

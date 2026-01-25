@@ -1,6 +1,6 @@
-// LLVM runtime: extern "C" wrappers around pl0_1_bigint.hpp
+// LLVM runtime: extern "C" wrappers around e1_bigint.hpp
 // Compile to .ll for linking with generated LLVM IR
-#include "pl0_1_bigint.hpp"
+#include "e1_bigint.hpp"
 
 using namespace bigint;
 

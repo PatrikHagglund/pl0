@@ -1,7 +1,7 @@
 // PL/0 Level 1 interpreter using PEG grammar
 // Single-phase: semantic actions execute during parsing (no AST)
 
-module pl0peg1
+module e1peg
 
 import src/peg
 import std/os/file
@@ -168,7 +168,7 @@ pub fun main()
 
   "Starting (direct execution, no AST)...".println
   // Read and parse the PEG grammar from file
-  val grammar-text = read-text-file("src/pl0_1.peg".path)
+  val grammar-text = read-text-file("src/e1.peg".path)
   ("Grammar file read: " ++ grammar-text.count.int/show ++ " chars").println
   val g = parse-peg(grammar-text)
   println("Grammar loaded: " ++ g.length.int/show ++ " rules")

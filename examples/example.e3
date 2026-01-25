@@ -1,7 +1,7 @@
-// Emulating pl0_4 features using only pl0_3 primitives
-// pl0_3 has: integers, booleans, callables, case expressions
+// Emulating e4 features using only e3 primitives
+// e3 has: integers, booleans, callables, case expressions
 
-// --- pl0_3 new: booleans, callables, case expressions ---
+// --- e3 new: booleans, callables, case expressions ---
 is_even :
 is_even := (x) -> case {
   x % 2 == 0 -> true,

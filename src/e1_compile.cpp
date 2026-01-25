@@ -1,8 +1,8 @@
 // PL/0 Level 1 Compiler - C++ and LLVM IR backends
 //
 // Two backends:
-//   - C++ backend (default): emits C++ using pl0_1_bigint.hpp or _BitInt
-//   - LLVM backend (--llvm): emits LLVM IR, links with pl0_1_rt_bigint.ll
+//   - C++ backend (default): emits C++ using e1_bigint.hpp or _BitInt
+//   - LLVM backend (--llvm): emits LLVM IR, links with e1_rt_bigint.ll
 //
 // Bigint memory management (LLVM backend, INT_BITS=0):
 //   - Variables: heap-allocated via bi_assign() with realloc() and doubling strategy
@@ -10,8 +10,8 @@
 //   - Temporaries: stack-allocated (alloca), reclaimed via stacksave/restore
 //   This gives unlimited integer size with minimal allocation overhead.
 //
-#include "pl0_1.hpp"
-#include "pl0_1_preamble.hpp"
+#include "e1.hpp"
+#include "e1_preamble.hpp"
 #include <cstring>
 #include <unordered_set>
 

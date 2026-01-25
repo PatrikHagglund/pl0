@@ -1,4 +1,4 @@
-// Collatz iteration in pl0_1
+// Collatz iteration in e1
 // Usage: ./program <n>
 // Prints each step until reaching 1
 

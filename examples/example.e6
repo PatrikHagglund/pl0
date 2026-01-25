@@ -1,7 +1,7 @@
-// Emulating a hypothetical pl0_7 feature using pl0_6 primitives
+// Emulating a hypothetical e7 feature using e6 primitives
 // Example: ad-hoc polymorphism via dictionary passing
 
-// --- pl0_6 new: static typing ---
+// --- e6 new: static typing ---
 type Point = {x: int, y: int}
 origin : Point = {x: 0, y: 0}
 id_int : (int) -> int = (x: int) -> x

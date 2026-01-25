@@ -1,15 +1,15 @@
 // PL/0 Level 1 interpreter in Koka
 // Two-phase: parse to AST, then evaluate with effect handlers
 
-module pl01
+module e1
 
 import std/text/parse
 import std/os/file
 import std/os/path
 import std/os/env
-import src/pl01-types
-import src/pl01-parser
-import src/pl01-eval
+import src/e1-types
+import src/e1-parser
+import src/e1-eval
 
 // Strip // comments
 fun strip-comments(s: string): string
@@ -21,7 +21,7 @@ fun strip-comments(s: string): string
   ).join("\n")
 
 // Main
-fun run(input: string, init-env: pl01-types/env): <console, div> pl01-types/env
+fun run(input: string, init-env: e1-types/env): <console, div> e1-types/env
   match parse(input.strip-comments.slice, pprogram)
     ParseOk(stmts, _) ->
       with ctl do-break(env) env
@@ -35,7 +35,7 @@ pub fun main()
   val prog-path = match args
     Cons(p, _) -> p
     Nil -> 
-      println("Usage: pl01 <file> [arg1] [arg2]")
+      println("Usage: e1 <file> [arg1] [arg2]")
       return ()
   val arg1 = match args
     Cons(_, Cons(n, _)) -> n.parse-int.default(0)

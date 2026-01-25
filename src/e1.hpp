@@ -15,7 +15,7 @@
 // ---------- Language Implementation Configuration ----------
 
 // Integer bit width: 0 = bigint (dynamic), >0 = _BitInt(N) fixed-width
-// LLVM backend: bigint requires linking with pl0_1_rt_bigint.bc (see Makefile).
+// LLVM backend: bigint requires linking with e1_rt_bigint.bc (see Makefile).
 #ifndef INT_BITS
 constexpr int INT_BITS = 0;
 #endif
@@ -24,7 +24,7 @@ constexpr int INT_BITS = 0;
 constexpr int ARG_COUNT = 2;
 
 // Integer type selection
-#include "pl0_1_bigint.hpp"
+#include "e1_bigint.hpp"
 
 template<int Bits> struct IntType;
 template<> struct IntType<0> { using type = bigint::Int; };  // bigint via header-only lib

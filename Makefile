@@ -16,7 +16,7 @@ endif
 
 # Container image name
 IMAGE = pl0-build
-FILE ?= examples/example_0.pl0
+FILE ?= examples/example.e0
 
 # Configure commands based on build mode
 ifeq ($(BUILD_MODE),native)
@@ -49,8 +49,8 @@ else
 endif
 
 # Note: timeouts must be placed *inside* the container to be effective:
-#   $(RUN) timeout 5 ./pl0_1 ...    # works
-#   timeout 5 $(RUN) ./pl0_1 ...    # does NOT work
+#   $(RUN) timeout 5 ./e1 ...    # works
+#   timeout 5 $(RUN) ./e1 ...    # does NOT work
 
 # Build container image (only for podman/docker modes)
 ifneq ($(BUILD_MODE),native)
@@ -66,12 +66,12 @@ KOKA_OPT = -O3
 OPT_LLVM_IR = -O3
 CXXFLAGS = $(CXXSTD) $(OPT) -Wall -Wextra -Werror -Wno-vla-cxx-extension
 
-TARGET = pl0_1
-SRC = src/pl0_1.cpp
-HDR = src/pl0_1.hpp
+TARGET = e1
+SRC = src/e1.cpp
+HDR = src/e1.hpp
 
-TARGET_COMPILE = pl0_1_compile
-SRC_COMPILE = src/pl0_1_compile.cpp
+TARGET_COMPILE = e1_compile
+SRC_COMPILE = src/e1_compile.cpp
 
 $(TARGET): $(SRC) $(HDR) $(IMAGE_DEPS)
 	$(CXX) $(CXXFLAGS) -o $@ $<
@@ -84,40 +84,40 @@ all: $(TARGET) $(TARGET_COMPILE)
 # Common compile commands for generated code
 CLANGXX_OUT = clang++ $(CXXSTD) -Wno-vla-cxx-extension $(OPT) -I src
 CLANG_LL = clang -Wno-override-module $(OPT)
-LLVM_LINK = llvm-link /tmp/prog.ll src/pl0_1_rt_bigint.ll -S -o out.ll
+LLVM_LINK = llvm-link /tmp/prog.ll src/e1_rt_bigint.ll -S -o out.ll
 
 run: $(TARGET)
-	$(RUN) ./$(TARGET) examples/example_0.pl0
+	$(RUN) ./$(TARGET) examples/example.e0
 
 run-compile: $(TARGET_COMPILE)
-	$(RUN) sh -c "./$(TARGET_COMPILE) examples/example_0.pl0 > out.cpp && $(CLANGXX_OUT) out.cpp -o out && ./out"
+	$(RUN) sh -c "./$(TARGET_COMPILE) examples/example.e0 > out.cpp && $(CLANGXX_OUT) out.cpp -o out && ./out"
 
-run-llvm: $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll
-	$(RUN) sh -c "./pl0_1_compile --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && lli out.ll"
+run-llvm: $(TARGET_COMPILE) src/e1_rt_bigint.ll
+	$(RUN) sh -c "./e1_compile --llvm examples/example.e0 > /tmp/prog.ll && $(LLVM_LINK) && lli out.ll"
 
-run-llvm-native: $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll
-	$(RUN) sh -c "./pl0_1_compile --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && $(CLANG_LL) out.ll -o out && ./out"
+run-llvm-native: $(TARGET_COMPILE) src/e1_rt_bigint.ll
+	$(RUN) sh -c "./e1_compile --llvm examples/example.e0 > /tmp/prog.ll && $(LLVM_LINK) && $(CLANG_LL) out.ll -o out && ./out"
 
-src/pl0_1_rt_bigint.ll: src/pl0_1_rt_bigint.cpp $(IMAGE_DEPS)
+src/e1_rt_bigint.ll: src/e1_rt_bigint.cpp $(IMAGE_DEPS)
 	$(RUN) clang++ $(CXXSTD) -Wno-vla-cxx-extension -S -emit-llvm $(OPT_LLVM_IR) $< -o $@
 
 clean:
-	rm -rf $(TARGET) $(TARGET_COMPILE) out.ll out out.cpp out-O0 src/.koka src/pl0peg1 src/pl01
+	rm -rf $(TARGET) $(TARGET_COMPILE) out.ll out out.cpp out-O0 src/.koka src/e1peg src/e1
 
-BENCH_1 = examples/bench_1_factorial.pl0
+BENCH_1 = examples/factorial.e1
 BENCH_1_ITERS = 2000
 BENCH_1_N = 31
 BENCH_1_ARGS = $(BENCH_1_ITERS) $(BENCH_1_N)
 
-bench-1: $(TARGET) $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll src/pl0peg1 src/pl01
+bench-1: $(TARGET) $(TARGET_COMPILE) src/e1_rt_bigint.ll src/e1peg src/e1
 	@$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && $(CLANGXX_OUT) out.cpp -o out_cpp"
 	@echo "=== C++ backend ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_1_ARGS)"
 	@$(RUN) sh -c "./$(TARGET_COMPILE) --llvm $(BENCH_1) > /tmp/prog.ll && $(LLVM_LINK)"
 	@echo "=== LLVM backend ===" && $(RUN) sh -c "$(CLANG_LL) out.ll -o out && time ./out $(BENCH_1_ARGS)"
 	@echo "=== LLVM lli (JIT) ===" && $(RUN) sh -c "time lli out.ll $(BENCH_1_ARGS)" || true
 	@echo "=== C++ interpreter ===" && $(RUN) sh -c "time ./$(TARGET) $(BENCH_1) $(BENCH_1_ARGS)"
-	@echo "=== Koka interpreter ===" && $(RUN) sh -c "time ./src/pl01 $(BENCH_1) $(BENCH_1_ARGS)"
-	@echo "=== Koka PEG interpreter ===" && $(RUN) sh -c "time ./src/pl0peg1 $(BENCH_1) $(BENCH_1_ARGS)"
+	@echo "=== Koka interpreter ===" && $(RUN) sh -c "time ./src/e1 $(BENCH_1) $(BENCH_1_ARGS)"
+	@echo "=== Koka PEG interpreter ===" && $(RUN) sh -c "time ./src/e1peg $(BENCH_1) $(BENCH_1_ARGS)"
 
 # Benchmark comparing INT_BITS settings (no Koka)
 # For INT_BITS=0, also tests different LIMB_BITS values
@@ -130,7 +130,7 @@ bench-intbits: $(IMAGE_DEPS)
 		if [ "$$bits" = "0" ]; then \
 			for limb in $(BENCH_LIMB_BITS); do \
 				echo ""; echo "========== INT_BITS=0, LIMB_BITS=$$limb =========="; \
-				$(RUN) clang++ $(CXXSTD) -Wno-vla-cxx-extension -DLIMB_BITS=$$limb -S -emit-llvm $(OPT_LLVM_IR) src/pl0_1_rt_bigint.cpp -o src/pl0_1_rt_bigint.ll; \
+				$(RUN) clang++ $(CXXSTD) -Wno-vla-cxx-extension -DLIMB_BITS=$$limb -S -emit-llvm $(OPT_LLVM_IR) src/e1_rt_bigint.cpp -o src/e1_rt_bigint.ll; \
 				$(CXX) $(CXXFLAGS) -DINT_BITS=0 -DLIMB_BITS=$$limb -o $(TARGET) $(SRC); \
 				$(CXX) $(CXXFLAGS) -DINT_BITS=0 -DLIMB_BITS=$$limb -o $(TARGET_COMPILE) $(SRC_COMPILE); \
 				$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && $(CLANGXX_OUT) -DLIMB_BITS=$$limb out.cpp -o out_cpp"; \
@@ -151,33 +151,33 @@ bench-intbits: $(IMAGE_DEPS)
 		fi; \
 	done
 
-src/pl0peg1: src/pl0peg1.koka src/peg.koka $(IMAGE_DEPS)
+src/e1peg: src/e1peg.koka src/peg.koka $(IMAGE_DEPS)
 	$(KOKA) $(KOKA_OPT) --compile src/peg.koka 2>/dev/null
-	$(KOKA) $(KOKA_OPT) -o src/pl0peg1 src/pl0peg1.koka 2>/dev/null
-	chmod +x src/pl0peg1
+	$(KOKA) $(KOKA_OPT) -o src/e1peg src/e1peg.koka 2>/dev/null
+	chmod +x src/e1peg
 
-src/pl01: src/pl01.koka src/pl01-types.koka src/pl01-parser.koka src/pl01-eval.koka $(IMAGE_DEPS)
-	$(KOKA) $(KOKA_OPT) -l src/pl01-types.koka 2>/dev/null
-	$(KOKA) $(KOKA_OPT) -l src/pl01-parser.koka 2>/dev/null
-	$(KOKA) $(KOKA_OPT) -l src/pl01-eval.koka 2>/dev/null
-	$(KOKA) $(KOKA_OPT) -o src/pl01 src/pl01.koka 2>/dev/null
-	chmod +x src/pl01
+src/e1: src/e1.koka src/e1-types.koka src/e1-parser.koka src/e1-eval.koka $(IMAGE_DEPS)
+	$(KOKA) $(KOKA_OPT) -l src/e1-types.koka 2>/dev/null
+	$(KOKA) $(KOKA_OPT) -l src/e1-parser.koka 2>/dev/null
+	$(KOKA) $(KOKA_OPT) -l src/e1-eval.koka 2>/dev/null
+	$(KOKA) $(KOKA_OPT) -o src/e1 src/e1.koka 2>/dev/null
+	chmod +x src/e1
 
 koka-pl0: $(IMAGE_DEPS)
-	$(RUN) sh -c "koka -l src/pl01-types.koka && koka -l src/pl01-parser.koka && koka -l src/pl01-eval.koka && koka -e src/pl01.koka -- $(FILE)"
+	$(RUN) sh -c "koka -l src/e1-types.koka && koka -l src/e1-parser.koka && koka -l src/e1-eval.koka && koka -e src/e1.koka -- $(FILE)"
 
 koka-peg: $(IMAGE_DEPS)
-	$(RUN) sh -c "koka --compile src/peg.koka && koka -e src/pl0peg1.koka -- examples/example_0.pl0"
+	$(RUN) sh -c "koka --compile src/peg.koka && koka -e src/e1peg.koka -- examples/example.e0"
 
 koka-peg0: $(IMAGE_DEPS)
-	$(RUN) sh -c "koka --compile src/peg.koka && koka -e src/pl0peg0.koka -- examples/example_0.pl0"
+	$(RUN) sh -c "koka --compile src/peg.koka && koka -e src/e0peg.koka -- examples/example.e0"
 
 koka-peg-test: $(IMAGE_DEPS)
 	$(RUN) koka -e test/peg_test.koka
 
 # Test target: verify all examples across all interpreters/compilers
 # Expected outputs use newlines (heredoc style)
-test: $(TARGET) $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll src/pl0peg1 src/pl01
+test: $(TARGET) $(TARGET_COMPILE) src/e1_rt_bigint.ll src/e1peg src/e1
 	@$(RUN) sh -c '\
 	pass=0; fail=0; \
 	check() { \
@@ -186,42 +186,42 @@ test: $(TARGET) $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll src/pl0peg1 src/pl01
 	  if [ "$$actual" = "$$expected" ]; then echo "PASS $$name"; pass=$$((pass+1)); \
 	  else echo "FAIL $$name"; printf "  expected: %s\n" "$$expected" | head -1; printf "  actual: %s\n" "$$actual" | head -1; fail=$$((fail+1)); fi; \
 	}; \
-	./$(TARGET_COMPILE) examples/example_0.pl0 > /tmp/out.cpp && $(CLANGXX_OUT) /tmp/out.cpp -o /tmp/out_cpp; \
-	./$(TARGET_COMPILE) --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && $(CLANG_LL) out.ll -o /tmp/out_llvm; \
-	./$(TARGET_COMPILE) examples/example_1.pl0 > /tmp/out1.cpp && $(CLANGXX_OUT) /tmp/out1.cpp -o /tmp/out1_cpp; \
-	./$(TARGET_COMPILE) --llvm examples/example_1.pl0 > /tmp/prog1.ll && llvm-link /tmp/prog1.ll src/pl0_1_rt_bigint.ll -S -o /tmp/out1.ll && $(CLANG_LL) /tmp/out1.ll -o /tmp/out1_llvm; \
-	./$(TARGET_COMPILE) examples/bench_1_factorial.pl0 > /tmp/fact.cpp && $(CLANGXX_OUT) /tmp/fact.cpp -o /tmp/fact_cpp; \
-	./$(TARGET_COMPILE) --llvm examples/bench_1_factorial.pl0 > /tmp/fact.ll && llvm-link /tmp/fact.ll src/pl0_1_rt_bigint.ll -S -o /tmp/factll.ll && $(CLANG_LL) /tmp/factll.ll -o /tmp/fact_llvm; \
-	./$(TARGET_COMPILE) examples/collatz_1.pl0 > /tmp/coll.cpp && $(CLANGXX_OUT) /tmp/coll.cpp -o /tmp/coll_cpp; \
-	./$(TARGET_COMPILE) --llvm examples/collatz_1.pl0 > /tmp/coll.ll && llvm-link /tmp/coll.ll src/pl0_1_rt_bigint.ll -S -o /tmp/collll.ll && $(CLANG_LL) /tmp/collll.ll -o /tmp/coll_llvm; \
-	./$(TARGET_COMPILE) examples/gcd_1.pl0 > /tmp/gcd.cpp && $(CLANGXX_OUT) /tmp/gcd.cpp -o /tmp/gcd_cpp; \
-	./$(TARGET_COMPILE) --llvm examples/gcd_1.pl0 > /tmp/gcd.ll && llvm-link /tmp/gcd.ll src/pl0_1_rt_bigint.ll -S -o /tmp/gcdll.ll && $(CLANG_LL) /tmp/gcdll.ll -o /tmp/gcd_llvm; \
+	./$(TARGET_COMPILE) examples/example.e0 > /tmp/out.cpp && $(CLANGXX_OUT) /tmp/out.cpp -o /tmp/out_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/example.e0 > /tmp/prog.ll && $(LLVM_LINK) && $(CLANG_LL) out.ll -o /tmp/out_llvm; \
+	./$(TARGET_COMPILE) examples/example.e1 > /tmp/out1.cpp && $(CLANGXX_OUT) /tmp/out1.cpp -o /tmp/out1_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/example.e1 > /tmp/prog1.ll && llvm-link /tmp/prog1.ll src/e1_rt_bigint.ll -S -o /tmp/out1.ll && $(CLANG_LL) /tmp/out1.ll -o /tmp/out1_llvm; \
+	./$(TARGET_COMPILE) examples/factorial.e1 > /tmp/fact.cpp && $(CLANGXX_OUT) /tmp/fact.cpp -o /tmp/fact_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/factorial.e1 > /tmp/fact.ll && llvm-link /tmp/fact.ll src/e1_rt_bigint.ll -S -o /tmp/factll.ll && $(CLANG_LL) /tmp/factll.ll -o /tmp/fact_llvm; \
+	./$(TARGET_COMPILE) examples/collatz.e1 > /tmp/coll.cpp && $(CLANGXX_OUT) /tmp/coll.cpp -o /tmp/coll_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/collatz.e1 > /tmp/coll.ll && llvm-link /tmp/coll.ll src/e1_rt_bigint.ll -S -o /tmp/collll.ll && $(CLANG_LL) /tmp/collll.ll -o /tmp/coll_llvm; \
+	./$(TARGET_COMPILE) examples/gcd.e1 > /tmp/gcd.cpp && $(CLANGXX_OUT) /tmp/gcd.cpp -o /tmp/gcd_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/gcd.e1 > /tmp/gcd.ll && llvm-link /tmp/gcd.ll src/e1_rt_bigint.ll -S -o /tmp/gcdll.ll && $(CLANG_LL) /tmp/gcdll.ll -o /tmp/gcd_llvm; \
 	E0="7\n1\n8"; E1="6\n12\n3\n2"; COLL="5\n16\n8\n4\n2\n1"; \
-	check "example_0 cpp-interp" "./$(TARGET) examples/example_0.pl0" "$$(printf "$$E0")"; \
+	check "example_0 cpp-interp" "./$(TARGET) examples/example.e0" "$$(printf "$$E0")"; \
 	check "example_0 cpp-backend" "/tmp/out_cpp" "$$(printf "$$E0")"; \
 	check "example_0 llvm-backend" "/tmp/out_llvm" "$$(printf "$$E0")"; \
-	check "example_0 koka" "./src/pl01 examples/example_0.pl0" "$$(printf "$$E0")"; \
-	check "example_0 koka-peg" "./src/pl0peg1 examples/example_0.pl0" "$$(printf "$$E0")"; \
-	check "example_1 cpp-interp" "./$(TARGET) examples/example_1.pl0" "$$(printf "$$E1")"; \
+	check "example_0 koka" "./src/e1 examples/example.e0" "$$(printf "$$E0")"; \
+	check "example_0 koka-peg" "./src/e1peg examples/example.e0" "$$(printf "$$E0")"; \
+	check "example_1 cpp-interp" "./$(TARGET) examples/example.e1" "$$(printf "$$E1")"; \
 	check "example_1 cpp-backend" "/tmp/out1_cpp" "$$(printf "$$E1")"; \
 	check "example_1 llvm-backend" "/tmp/out1_llvm" "$$(printf "$$E1")"; \
-	check "example_1 koka" "./src/pl01 examples/example_1.pl0" "$$(printf "$$E1")"; \
-	check "example_1 koka-peg" "./src/pl0peg1 examples/example_1.pl0" "$$(printf "$$E1")"; \
-	check "factorial cpp-interp" "./$(TARGET) examples/bench_1_factorial.pl0 1 5" "120"; \
+	check "example_1 koka" "./src/e1 examples/example.e1" "$$(printf "$$E1")"; \
+	check "example_1 koka-peg" "./src/e1peg examples/example.e1" "$$(printf "$$E1")"; \
+	check "factorial cpp-interp" "./$(TARGET) examples/factorial.e1 1 5" "120"; \
 	check "factorial cpp-backend" "/tmp/fact_cpp 1 5" "120"; \
 	check "factorial llvm-backend" "/tmp/fact_llvm 1 5" "120"; \
-	check "factorial koka" "./src/pl01 examples/bench_1_factorial.pl0 1 5" "120"; \
-	check "factorial koka-peg" "./src/pl0peg1 examples/bench_1_factorial.pl0 1 5" "120"; \
-	check "collatz cpp-interp" "./$(TARGET) examples/collatz_1.pl0 5" "$$(printf "$$COLL")"; \
+	check "factorial koka" "./src/e1 examples/factorial.e1 1 5" "120"; \
+	check "factorial koka-peg" "./src/e1peg examples/factorial.e1 1 5" "120"; \
+	check "collatz cpp-interp" "./$(TARGET) examples/collatz.e1 5" "$$(printf "$$COLL")"; \
 	check "collatz cpp-backend" "/tmp/coll_cpp 5" "$$(printf "$$COLL")"; \
 	check "collatz llvm-backend" "/tmp/coll_llvm 5" "$$(printf "$$COLL")"; \
-	check "collatz koka" "./src/pl01 examples/collatz_1.pl0 5" "$$(printf "$$COLL")"; \
-	check "collatz koka-peg" "./src/pl0peg1 examples/collatz_1.pl0 5" "$$(printf "$$COLL")"; \
-	check "gcd cpp-interp" "./$(TARGET) examples/gcd_1.pl0 48 18" "6"; \
+	check "collatz koka" "./src/e1 examples/collatz.e1 5" "$$(printf "$$COLL")"; \
+	check "collatz koka-peg" "./src/e1peg examples/collatz.e1 5" "$$(printf "$$COLL")"; \
+	check "gcd cpp-interp" "./$(TARGET) examples/gcd.e1 48 18" "6"; \
 	check "gcd cpp-backend" "/tmp/gcd_cpp 48 18" "6"; \
 	check "gcd llvm-backend" "/tmp/gcd_llvm 48 18" "6"; \
-	check "gcd koka" "./src/pl01 examples/gcd_1.pl0 48 18" "6"; \
-	check "gcd koka-peg" "./src/pl0peg1 examples/gcd_1.pl0 48 18" "6"; \
+	check "gcd koka" "./src/e1 examples/gcd.e1 48 18" "6"; \
+	check "gcd koka-peg" "./src/e1peg examples/gcd.e1 48 18" "6"; \
 	echo ""; echo "Results: $$pass passed, $$fail failed"; \
 	[ $$fail -eq 0 ]'
 

@@ -1,8 +1,8 @@
-# PL/0 Level 1 Language Specification
+# e1 Language Specification
 
 ## Overview
 
-PL/0 Level 1 is a minimal Turing-complete language based on Minsky machine (counter machine) principles:
+e1 is a minimal Turing-complete language based on Minsky machine (counter machine) principles:
 1. **Unbounded integer variables** (counters)
 2. **Increment/decrement** (`+`, `-`)
 3. **Conditional zero-test with control flow** (`loop`, `break_ifz`)

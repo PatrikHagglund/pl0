@@ -1,5 +1,5 @@
-// Emulating pl0_2 features using only pl0_1 primitives
-// pl0_1 has: integers, +, -, loop, break_ifz, variables
+// Emulating e2 features using only e1 primitives
+// e1 has: integers, +, -, loop, break_ifz, variables
 // break_ifz expr: breaks if expr evaluates to 0
 
 // Helper pattern: Invert a value (boolean context)
@@ -18,7 +18,7 @@
 //   break_ifz 0
 // }
 
-// --- pl0_1 core: loop/break_ifz/variables ---
+// --- e1 core: loop/break_ifz/variables ---
 counter := 3
 sum := 0
 loop {
@@ -30,16 +30,16 @@ loop {
 print sum
 
 // --- Unconditional break ---
-// pl0_2: break
-// pl0_1: break_ifz 0
+// e2: break
+// e1: break_ifz 0
 loop {
   x := 42
   break_ifz 0
 }
 
 // --- case statement ---
-// pl0_2: case { cond1 -> stmt1, cond2 -> stmt2 }
-// pl0_1: set default, then override with if-pattern
+// e2: case { cond1 -> stmt1, cond2 -> stmt2 }
+// e1: set default, then override with if-pattern
 n := 2
 r := 2  // default
 loop {
@@ -76,7 +76,7 @@ loop {
 }
 
 // --- Comparison: a != b ---
-// pl0_1: use arithmetic and control flow
+// e1: use arithmetic and control flow
 a := 3
 b := 4
 // Calculate neq = (a != b)
@@ -126,8 +126,8 @@ loop {
 }
 
 // --- Multiplication: a * b ---
-// pl0_2: a * b
-// pl0_1: repeated addition
+// e2: a * b
+// e1: repeated addition
 result := 0
 loop {
   break_ifz b

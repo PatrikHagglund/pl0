@@ -1,15 +1,15 @@
 # PL/0 Implementations
 
-Interpreters and compilers for PL/0 level 1.
+Interpreters and compilers for e1.
 
 ## Overview
 
 | Implementation | Language | Type | Integer Support |
 |----------------|----------|------|-----------------|
-| `pl01.koka` | Koka | Interpreter | Koka bigint |
-| `pl0peg1.koka` | Koka | Interpreter | Koka bigint |
-| `pl0_1.cpp` | C++ | Interpreter | Configurable |
-| `pl0_1_compile.cpp` | C++ | Compiler | Configurable |
+| `e1.koka` | Koka | Interpreter | Koka bigint |
+| `e1peg.koka` | Koka | Interpreter | Koka bigint |
+| `e1.cpp` | C++ | Interpreter | Configurable |
+| `e1_compile.cpp` | C++ | Compiler | Configurable |
 
 **Compiler requirement:** clang++ 18+ (uses `_BitInt`; g++ not supported).
 
@@ -17,14 +17,14 @@ Interpreters and compilers for PL/0 level 1.
 
 ### Koka Interpreters
 
-**`pl01.koka` — Two-Phase:**
+**`e1.koka` — Two-Phase:**
 Traditional parse-then-execute with AST.
 
 ```bash
 make koka-pl0
 ```
 
-**`pl0peg1.koka` — Single-Phase:**
+**`e1peg.koka` — Single-Phase:**
 No AST — semantic actions during parsing produce thunks. Uses packrat memoization.
 
 ```bash
@@ -37,7 +37,7 @@ effect loop-break
   ctl do-break(e: env): a
 ```
 
-### C++ Interpreter (`pl0_1.cpp`)
+### C++ Interpreter (`e1.cpp`)
 
 Hand-written lexer and recursive descent parser, AST-based execution.
 
@@ -45,14 +45,14 @@ Hand-written lexer and recursive descent parser, AST-based execution.
 make run
 ```
 
-## Compiler (`pl0_1_compile.cpp`)
+## Compiler (`e1_compile.cpp`)
 
 Two backends from a single code generator:
 
 | Backend | Output | Command |
 |---------|--------|---------|
-| C++ (default) | `.cpp` file | `./pl0_1_compile prog.pl0` |
-| LLVM IR | `.ll` file | `./pl0_1_compile --llvm prog.pl0` |
+| C++ (default) | `.cpp` file | `./e1_compile prog.e1` |
+| LLVM IR | `.ll` file | `./e1_compile --llvm prog.e1` |
 
 ```bash
 make run-compile      # C++ backend
@@ -62,7 +62,7 @@ make run-llvm-native  # LLVM native
 
 ## Integer Configuration
 
-Configured via macros in `src/pl0_1.hpp`:
+Configured via macros in `src/e1.hpp`:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -86,7 +86,7 @@ The generated C++ code uses `#ifndef INT_BITS` guards, allowing override when co
 
 ```bash
 # Generate C++ code (uses default INT_BITS=0)
-./pl0_1_compile prog.pl0 > out.cpp
+./e1_compile prog.e1 > out.cpp
 
 # Compile with different INT_BITS
 clang++ -DINT_BITS=64 out.cpp -o out    # 64-bit integers
@@ -114,12 +114,12 @@ Uses C23 `_BitInt(N)` for any bit width.
 
 ### Bigint (`INT_BITS = 0`)
 
-Header-only library (`pl0_1_bigint.hpp`) with unlimited precision.
+Header-only library (`e1_bigint.hpp`) with unlimited precision.
 
 **Architecture:**
 ```
-pl0_1_bigint.hpp     — Core implementation (used by all C++ code)
-pl0_1_rt_bigint.cpp  — extern "C" wrappers for LLVM backend
+e1_bigint.hpp     — Core implementation (used by all C++ code)
+e1_rt_bigint.cpp  — extern "C" wrappers for LLVM backend
 ```
 
 **Memory layout:**
@@ -161,20 +161,20 @@ The C++ backend generates identical code for both integer types using macros:
 | `add`, `sub`, `neg` | Arithmetic (reference-based API) |
 | `is_zero`, `print` | Test and output |
 
-The bigint API uses references internally for safety, with `__restrict` hints for alias optimization. The LLVM runtime (`pl0_1_rt_bigint.cpp`) provides `extern "C"` wrappers that bridge to the pointer-based ABI.
+The bigint API uses references internally for safety, with `__restrict` hints for alias optimization. The LLVM runtime (`e1_rt_bigint.cpp`) provides `extern "C"` wrappers that bridge to the pointer-based ABI.
 
 ## Source Files
 
 ```
 src/
-  pl0_1.hpp           — Shared lexer, parser, AST, configuration
-  pl0_1.cpp           — C++ interpreter
-  pl0_1_compile.cpp   — Unified compiler
-  pl0_1_preamble.hpp  — Runtime preambles (macros for both backends)
-  pl0_1_bigint.hpp    — Bigint implementation
-  pl0_1_rt_bigint.cpp — LLVM runtime wrappers
-  pl01*.koka          — Koka interpreter
-  pl0peg1.koka        — Koka PEG interpreter
+  e1.hpp           — Shared lexer, parser, AST, configuration
+  e1.cpp           — C++ interpreter
+  e1_compile.cpp   — Unified compiler
+  e1_preamble.hpp  — Runtime preambles (macros for both backends)
+  e1_bigint.hpp    — Bigint implementation
+  e1_rt_bigint.cpp — LLVM runtime wrappers
+  e1*.koka          — Koka interpreter
+  e1peg.koka        — Koka PEG interpreter
   peg.koka            — Generic PEG parser
 ```
 
@@ -211,11 +211,11 @@ Implementations differ in strictness for invalid syntax:
 | Implementation | Behavior |
 |----------------|----------|
 | C++ | **Strict** — tokenizes all → parses all → executes. Fails on any invalid character. |
-| pl01 (Koka) | **Lenient** — `many(pstmt)` stops on parse failure, ignores trailing garbage. |
-| pl0peg1 (Koka) | **Lenient** — parses statement-by-statement, reports failure but tolerates garbage. |
+| e1 (Koka) | **Lenient** — `many(pstmt)` stops on parse failure, ignores trailing garbage. |
+| e1peg (Koka) | **Lenient** — parses statement-by-statement, reports failure but tolerates garbage. |
 
 Example (`print 1` followed by `@@@ invalid`):
 - C++: Error before execution ("Unknown char: @")
 - Koka: Prints `1`, then stops/reports
 
-See `examples/test_dead_code*.pl0` for test cases.
+See `examples/test_dead_code*.e1` for test cases.

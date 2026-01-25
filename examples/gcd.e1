@@ -1,4 +1,4 @@
-// Euclidean algorithm (GCD) in pl0_1
+// Euclidean algorithm (GCD) in e1
 // Usage: ./program <a> <b>
 // Prints gcd(a, b)
 

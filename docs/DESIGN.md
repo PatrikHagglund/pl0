@@ -1,6 +1,6 @@
 # Design Decisions
 
-## Language Progression (pl0_0 through pl0_6)
+## Language Progression (e0 through e6)
 
 ### Philosophy
 Each level is a strict superset of the previous. This allows:
@@ -12,18 +12,18 @@ Each level is a strict superset of the previous. This allows:
 
 | Level | Adds | Why Here |
 |-------|------|----------|
-| pl0_0 | Sequential only (`+`, `-`) | Baseline: not Turing-complete, no control flow |
-| pl0_1 | `loop`, `break_ifz` | Minimal Turing-completeness (Minsky machine) |
-| pl0_2 | `case`, `break`, `* / %`, comparisons | Practical imperative programming |
-| pl0_3 | Booleans, callables, case expressions | First-class functions, proper boolean type |
-| pl0_4 | Arrays, pattern matching | Compound data, destructuring |
-| pl0_5 | Records, unit | Named fields, void/unit value |
-| pl0_6 | Static typing, type definitions | Type safety, user-defined types |
+| e0 | Sequential only (`+`, `-`) | Baseline: not Turing-complete, no control flow |
+| e1 | `loop`, `break_ifz` | Minimal Turing-completeness (Minsky machine) |
+| e2 | `case`, `break`, `* / %`, comparisons | Practical imperative programming |
+| e3 | Booleans, callables, case expressions | First-class functions, proper boolean type |
+| e4 | Arrays, pattern matching | Compound data, destructuring |
+| e5 | Records, unit | Named fields, void/unit value |
+| e6 | Static typing, type definitions | Type safety, user-defined types |
 
-### Why pl0_0 is Not Turing-Complete
+### Why e0 is Not Turing-Complete
 Intentionally excludes loops to show the jump from "calculator" to "computer." Demonstrates that arithmetic alone (without unbounded iteration) cannot express general computation.
 
-### Why pl0_1 is the Turing Threshold
+### Why e1 is the Turing Threshold
 The combination of:
 1. Unbounded integers (counters)
 2. Increment/decrement (`+`, `-`)
@@ -33,16 +33,16 @@ This is exactly a 2-counter Minsky machine, proven Turing-complete by Minsky (19
 
 ### Emulation Principle
 Each level's example file demonstrates encoding the *next* level's features using only current primitives:
-- pl0_1 emulates `case`, `break`, `*`, `/`, `<` from pl0_2
-- pl0_2 emulates booleans and simple callables from pl0_3
+- e1 emulates `case`, `break`, `*`, `/`, `<` from e2
+- e2 emulates booleans and simple callables from e3
 - etc.
 
-This shows the features are conveniences, not fundamental extensions to computational power (after pl0_1).
+This shows the features are conveniences, not fundamental extensions to computational power (after e1).
 
 ## Control Flow: `break_ifz` vs `when` loops
 
 ### The Question
-Should pl0_1 use `break_ifz expr` (break if zero) or `when expr stmt` (loop while non-zero)?
+Should e1 use `break_ifz expr` (break if zero) or `when expr stmt` (loop while non-zero)?
 
 ### Comparison
 

@@ -1,7 +1,7 @@
-module pl01-parser
+module e1-parser
 
 import std/text/parse
-import src/pl01-types
+import src/e1-types
 
 // Parser
 fun pws(): parse ()

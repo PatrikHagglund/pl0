@@ -1,7 +1,7 @@
-// Emulating pl0_6 static typing using only pl0_5 primitives
-// pl0_5 has: records, unit, arrays, pattern matching
+// Emulating e6 static typing using only e5 primitives
+// e5 has: records, unit, arrays, pattern matching
 
-// --- pl0_5 new: records and unit ---
+// --- e5 new: records and unit ---
 origin0 := {x: 0, y: 0}
 nothing := ()
 get_x0 :

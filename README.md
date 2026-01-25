@@ -6,144 +6,29 @@ Currently in an initial work-in-progress state.
 
 **Philosophy:**
 - Keep languages small
-- Progressive complexity — currently seven levels, each a superset of the previous
+- Progressive complexity — currently seven levels (e0–e6), each a superset of the previous
 - Try several implementation approaches
 
+The "e" in e0–e6 may stand for "experiment" or "exploration".
+
 **Current state:**
-- pl0_1 (and pl0_0) have two different working interpreters written in Koka, one in C++, and a compiler in C++ targeting LLVM IR.
+- e1 (and e0) have two different working interpreters written in Koka, one in C++, and a compiler in C++ targeting LLVM IR.
 - Benchmarks for level 1
-- pl0_2 through pl0_6 have PEG grammars and example files, but no interpreters yet
+- e2 through e6 have PEG grammars and example files, but no interpreters yet
 - For each level, example code shows how to emulate higher-level features with lower-level primitives
 
-## Setup
+## Quick Start
 
-### Quick Start
-
-**Source the setup script**
+**Build/test:**
 ```bash
-. ./setup.sh
-# or
-source ./setup.sh
-```
-This will:
-- Detect your system
-  - Linux (Fedora, Debian/Ubuntu), or macOS (mostly untested)
-- Install required tools (if needed), using sudo
-  - Requires clang++ 18+, LLVM tools, Koka (optional)
-- **Automatically set BUILD_MODE for the current session**
-
-### Build Modes
-
-The project supports flexible build modes:
-- **Native**: Run builds directly on your system 
-- **Podman/Docker**: Use a container based on Fedora Rawhide to install tools
-
-The build system tries to auto-detects the best option.
-
-**Quick commands:**
-```bash
-make              # Auto-detect and build
+make              # Auto-detect mode and build
 make test         # Run tests
 make BUILD_MODE=native    # Force native build
 make BUILD_MODE=podman    # Force Podman
 make help         # Show all options
 ```
 
-Rebuild the container after changes to `Containerfile`:
-```bash
-rm .image && make .image
-```
-
-## Grammar Levels
-
-| Version | Types | Features |
-|---------|-------|----------|
-| pl0_0 | ℤ | sequential only, + - (not Turing-complete) |
-| pl0_1 | ℤ | + loop, break_ifz (Turing-complete, Minsky machine) |
-| pl0_2 | ℤ | + case statements, break, blocks |
-| pl0_3 | ℤ, 𝔹, () → T | + booleans, callables, case expressions |
-| pl0_4 | ℤ, 𝔹, [T], () → T | + arrays, pattern matching |
-| pl0_5 | ℤ, 𝔹, [T], {…}, () → T, unit | + records, unit literal |
-| pl0_6 | ℤ, 𝔹, [T], {…}, () → T, unit | + static typing, type definitions |
-
-Each level is a strict superset of the previous.
-
-## Syntax Overview
-
-### Bindings
-```
-x:              // declaration
-x := 5          // declaration with init / reassignment
-x: int = 5      // typed declaration (pl0_6 only)
-arr.0 := 5      // indexed assignment (pl0_4+)
-```
-
-### Built-in Input Variables
-```
-arg1            // first command-line argument (integer, default 0)
-arg2            // second command-line argument (integer, default 0)
-```
-
-Usage: `./program <arg1> <arg2>`
-
-### Control Flow
-```
-loop statement
-break_ifz expr      // break if zero (pl0_1)
-break               // unconditional break (pl0_2+)
-case { guard -> statement ... }
-print expr          // output value
-```
-
-### Expressions
-```
-case { guard -> expr, ... }     // case expression (pl0_3+)
-(x) -> expr                     // function literal
-()                              // unit value (pl0_5+)
-```
-
-### Operators
-- Arithmetic: `+ - * / %`
-- Comparison: `== != < <= > >=`
-- Boolean: `&& || !` (pl0_3+)
-
-### Application and Access
-
-Two forms of application/access:
-
-```
-f x             // function call (juxtaposition, evaluated)
-arr i           // array access (evaluated index)
-rec key         // record field (evaluated key)
-
-arr.0           // array access (literal index)
-rec.field       // record field (literal name)
-```
-
-Juxtaposition evaluates the argument; dot access uses the literal index/field name.
-
-## Examples
-
-Located in `examples/`:
-- `example_0.pl0` — Sequential computation (pl0_0)
-- `example_1.pl0` — Emulating pl0_2 features in pl0_1
-- `bench_1_factorial.pl0` — Factorial benchmark
-- `collatz_1.pl0` — Collatz sequence iteration
-- `gcd_1.pl0` — Euclidean algorithm (GCD)
-
-## Implementations
-
-| Approach | Files | Notes |
-|----------|-------|-------|
-| Koka (hand-written parser) | `pl01.koka` | AST used|
-| Koka (PEG meta-interpreter) | `peg.koka`, `pl0peg1.koka` | Single-phase parse+execute, no AST |
-| C++ interpreter | `pl0_1.cpp`, `pl0_1.hpp` | Handwritten, AST used |
-| Compiler in C++ | `pl0_1_compile.cpp`, `pl0_1.hpp` | C++ or LLVM IR backend |
-
-See [docs/IMPLEMENTATIONS.md](docs/IMPLEMENTATIONS.md) for details on each implementation.
-
-### Quick Start
-
+**Run implementations:**
 ```bash
 make koka-pl0       # Koka interpreter
 make koka-peg       # Koka PEG interpreter
@@ -151,6 +36,45 @@ make run            # C++ interpreter
 make run-compile    # C++ compiler (C++ backend)
 make run-llvm       # C++ compiler (LLVM JIT)
 ```
+
+**Native setup** (optional — alternatively, tools are installed in a container):
+```bash
+source ./setup.sh
+```
+Installs Clang/LLVM and Koka on Linux (Fedora, Debian/Ubuntu) or macOS.
+
+## Grammar Levels
+
+| Version | Types | Features |
+|---------|-------|----------|
+| e0 | ℤ | sequential only, + - (not Turing-complete) |
+| e1 | ℤ | + loop, break_ifz (Turing-complete, Minsky machine) |
+| e2 | ℤ | + case statements, break, blocks |
+| e3 | ℤ, 𝔹, () → T | + booleans, callables, case expressions |
+| e4 | ℤ, 𝔹, [T], () → T | + arrays, pattern matching |
+| e5 | ℤ, 𝔹, [T], {…}, () → T, unit | + records, unit literal |
+| e6 | ℤ, 𝔹, [T], {…}, () → T, unit | + static typing, type definitions |
+
+Each level is a strict superset of the previous.
+
+## Examples
+
+- [example.e0](examples/example.e0) — Sequential computation (e0)
+- [example.e1](examples/example.e1) — Emulating e2 features in e1
+- [factorial.e1](examples/factorial.e1) — Factorial benchmark
+- [collatz.e1](examples/collatz.e1) — Collatz sequence iteration
+- [gcd.e1](examples/gcd.e1) — Euclidean algorithm (GCD)
+
+## Implementations
+
+| Approach | Files | Notes |
+|----------|-------|-------|
+| Koka (hand-written parser) | `e1.koka` | AST used|
+| Koka (PEG meta-interpreter) | `peg.koka`, `e1peg.koka` | Single-phase parse+execute, no AST |
+| C++ interpreter | `e1.cpp`, `e1.hpp` | Handwritten, AST used |
+| Compiler in C++ | `e1_compile.cpp`, `e1.hpp` | C++ or LLVM IR backend |
+
+See [docs/IMPLEMENTATIONS.md](docs/IMPLEMENTATIONS.md) for details on each implementation.
 
 ## Benchmarks
 
@@ -172,7 +96,7 @@ Example results for `2000 31` (with bigint, INT_BITS=0):
 
 ## Further Reading
 
-- [docs/PL0_1_SPEC.md](docs/PL0_1_SPEC.md) — PL/0 Level 1 language specification
+- [docs/E1_SPEC.md](docs/E1_SPEC.md) — e1 language specification
 - [docs/DESIGN.md](docs/DESIGN.md) — Language progression rationale, control flow design decisions
 - [docs/IMPLEMENTATIONS.md](docs/IMPLEMENTATIONS.md) — Implementation details, integer bit width configuration
 - [docs/PEG_SPEC.md](docs/PEG_SPEC.md) — PEG grammar specification

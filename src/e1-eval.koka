@@ -1,6 +1,6 @@
-module pl01-eval
+module e1-eval
 
-import src/pl01-types
+import src/e1-types
 
 // Effect for break
 pub effect loop-break
