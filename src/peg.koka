@@ -611,9 +611,13 @@ fun peg-exec-match(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: psta
         cur := s1
         vals := Cons(v1, vals)
       val children = vals.reverse
-      val caps = to-captures(children)
-      val vs = to-values(children)
-      (cur, Captured(Nothing, def("_seq", s.string.first(s.count - cur.count).string, vs, caps)))
+      // Single child: pass through without wrapping
+      match children
+        Cons(v, Nil) -> (cur, v)
+        _ ->
+          val caps = to-captures(children)
+          val vs = to-values(children)
+          (cur, Captured(Nothing, def("_seq", s.string.first(s.count - cur.count).string, vs, caps)))
 
     PChoice(ps) ->
       peg-exec-choice(g, acts, def, ps, s)
@@ -685,9 +689,13 @@ fun peg-exec-match-with-caps(g: grammar, acts: actions<s>, def: action<s>, p: pe
         cur := s1
         vals := Cons(v1, vals)
       val children = vals.reverse
-      val caps = to-captures(children)
-      val vs = to-values(children)
-      (cur, caps, def("_seq", s.string.first(s.count - cur.count).string, vs, caps))
+      // Single child: pass through without wrapping
+      match children
+        Cons(v, Nil) -> (cur, to-captures(children), v.cval)
+        _ ->
+          val caps = to-captures(children)
+          val vs = to-values(children)
+          (cur, caps, def("_seq", s.string.first(s.count - cur.count).string, vs, caps))
     PStar(p1) ->
       var cur := s
       var vals := [Captured(Nothing, def("_nil", "", [], []))]
