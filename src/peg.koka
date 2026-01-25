@@ -658,15 +658,33 @@ fun peg-exec-match(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: psta
       // Mark this value with the capture name
       (s1, Captured(Just(cname), v1.cval))
 
-    PAction(p1, act) ->
-      val (s1, v1) = peg-exec-match(g, acts, def, p1, s)
+    PAction(p1, iact) ->
+      // For inline actions, we need to collect captures from the pattern
+      // Match the pattern and collect all captured values
+      val (s1, caps, result) = peg-exec-match-with-caps(g, acts, def, p1, s)
       val txt = s.string.first(s.count - s1.count).string
-      // Get captures from the matched pattern
-      val children = match v1 { Captured(_, _) -> [v1] }
-      val caps = to-captures(children)
       // Evaluate inline action with captures and text
-      val result = eval-iexpr(act, txt, caps, def)
-      (s1, Captured(Nothing, result))
+      val evaled = eval-iexpr(iact, txt, caps, def)
+      (s1, Captured(Nothing, evaled))
+
+// Match and collect captures (for inline actions)
+fun peg-exec-match-with-caps(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: pstate): <peg-fail, div> (pstate, captures<s>, s)
+  match p
+    PSeq(ps) ->
+      var cur := s
+      var vals := []
+      ps.foreach fn(p1)
+        val (s1, v1) = peg-exec-match(g, acts, def, p1, cur)
+        cur := s1
+        vals := Cons(v1, vals)
+      val children = vals.reverse
+      val caps = to-captures(children)
+      val vs = to-values(children)
+      (cur, caps, def("_seq", s.string.first(s.count - cur.count).string, vs, caps))
+    _ ->
+      val (s1, v1) = peg-exec-match(g, acts, def, p, s)
+      val caps = match v1.cname { Just(n) -> [(n, v1.cval)]; Nothing -> [] }
+      (s1, caps, v1.cval)
 
 // === Inline Action Evaluator ===
 // Evaluates iexpr with access to $0 (text), $name (captures), and built-ins

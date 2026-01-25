@@ -17,10 +17,10 @@ loop_stmt       = "loop" _ statement  @loop_stmt
 break_stmt      = "break_ifz" _ expression  @break_stmt
 print_stmt      = "print" _ expression  @print_stmt
 
-// Bindings (tag must be at end of entire rule, after all alternatives)
+// Bindings - using inline actions
 // Named captures: id for identifier, e for expression
-binding         = id:ident _ ":=" _ e:expression
-                / id:ident _ ":"  @binding
+binding         = id:ident _ ":=" _ e:expression { Assign($id, $e) }
+                / id:ident _ ":" { Decl($id) }
 
 // Expressions
 expression      = sum_expr  @expression

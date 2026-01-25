@@ -74,10 +74,33 @@ pub effect loop-break
 // The thunks are executed later with the actual environment
 
 // Default action: wrap children in a list
-// Special case: capture operators as SVOp
+// Also handles inline action built-ins: _text, _int, _str, _cons
 fun default-action(name: string, txt: string, children: list<semval>, caps: captures<semval>): semval
+  // Inline action built-ins
+  if name == "_text" then
+    // $0 - return text as identifier (for further processing)
+    SVIdent(txt)
+  elif name == "_int" || name == "int" then
+    // int($x) - parse as integer expression
+    val n = txt.list.take-while(fn(c) c.is-digit || c == '-').string.parse-int.default(0)
+    SVExpr(fn(_) n)
+  elif name == "_str" then
+    SVIdent(txt)
+  elif name == "_cons" then
+    // Constructor: Assign, Decl, etc.
+    match txt
+      "Assign" -> match children
+        Cons(SVIdent(id), Cons(SVExpr(f), _)) -> SVStmt(fn(e) env-set(e, id, f(e)))
+        _ -> SVList(children)
+      "Decl" -> match children
+        Cons(SVIdent(id), _) -> SVStmt(fn(e) env-set(e, id, 0))
+        _ -> SVList(children)
+      "Expr" -> match children
+        Cons(c, _) -> c
+        _ -> SVList(children)
+      _ -> SVList(children)
   // Capture operators when matching literals
-  if name == "_lit" then
+  elif name == "_lit" then
     val t = txt.trim
     if t == "+" || t == "-" then SVOp(t)
     else SVList(children)
@@ -299,7 +322,7 @@ fun pl0-actions(): actions<semval>
     ("unary", act-unary),
     ("sum_expr", act-sum-expr),
     ("expression", act-expression),
-    ("binding", act-binding),
+    // binding now uses inline actions { Assign($id, $e) } / { Decl($id) }
     ("print_stmt", act-print),
     ("break_stmt", act-break-if),
     ("loop_stmt", act-loop),
