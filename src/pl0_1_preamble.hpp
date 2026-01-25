@@ -64,13 +64,14 @@ inline void cpp_preamble(bool = false) {
 
 #if INT_BITS == 0
 #include "pl0_1_bigint.hpp"
-#define VAR(name) bigint::Raw* name = nullptr; bigint::Size name##_cap = 0; bigint::var_init(&name, &name##_cap)
-#define ARG(name, idx) bigint::Raw* name = nullptr; bigint::Size name##_cap = 0; bigint::arg_init(&name, &name##_cap, argc, argv, idx)
-#define ASSIGN(name, val) bigint::assign(&name, &name##_cap, val)
+#define VAR(name) auto name##_v = bigint::var_init()
+#define ARG(name, idx) auto name##_v = bigint::arg_init(argc, argv, idx)
+#define REF(name) (*name##_v.ptr)
+#define ASSIGN(name, val) bigint::assign(name##_v, val)
 #define IS_ZERO(x) bigint::is_zero(x)
 #define PRINT(x) bigint::print(x)
 #define LIT(name, v) BIGINT_LIT(name); bigint::init(name, v)
-#define NEG(name, a) BIGINT_TMP(name, (a)->size); bigint::neg(name, a)
+#define NEG(name, a) BIGINT_TMP(name, (a).size); bigint::neg(name, a)
 #define ADD(name, a, b) BIGINT_TMP(name, bigint::add_size(a, b)); bigint::add(name, a, b)
 #define SUB(name, a, b) BIGINT_TMP(name, bigint::sub_size(a, b)); bigint::sub(name, a, b)
 #else
@@ -80,6 +81,7 @@ using Int = _BitInt(INT_BITS);
 inline std::string to_string(Int v) { if (!v) return "0"; std::string s; bool n = v < 0; if (n) v = -v; while (v) { s = char('0' + v % 10) + s; v /= 10; } return n ? "-" + s : s; }
 #define VAR(name) Int name = 0
 #define ARG(name, idx) Int name = argc > idx ? std::atoll(argv[idx]) : 0
+#define REF(name) (name)
 #define ASSIGN(name, val) name = (val)
 #define IS_ZERO(x) ((x) == 0)
 #define PRINT(x) std::print("{}\n", to_string(x))

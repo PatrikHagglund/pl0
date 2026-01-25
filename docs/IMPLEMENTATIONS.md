@@ -155,11 +155,13 @@ The C++ backend generates identical code for both integer types using macros:
 
 | Function | Purpose |
 |----------|---------|
-| `var_init` | Initialize variable |
-| `assign` | Assign with realloc |
-| `arg_init` | Parse command-line arg |
-| `add`, `sub`, `neg` | Arithmetic |
+| `var_init()` | Initialize variable, returns `Var{ptr, cap}` |
+| `assign(Var&, Raw&)` | Assign with realloc |
+| `arg_init(argc, argv, idx)` | Parse command-line arg, returns `Var` |
+| `add`, `sub`, `neg` | Arithmetic (reference-based API) |
 | `is_zero`, `print` | Test and output |
+
+The bigint API uses references internally for safety, with `__restrict` hints for alias optimization. The LLVM runtime (`pl0_1_rt_bigint.cpp`) provides `extern "C"` wrappers that bridge to the pointer-based ABI.
 
 ## Source Files
 

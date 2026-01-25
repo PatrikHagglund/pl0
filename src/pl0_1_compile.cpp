@@ -48,7 +48,7 @@ struct GenCpp {
     int lbl = 0, tmp = 0;
     std::vector<int> ex = {};
 
-    // Expression codegen - emits temp declaration, returns variable name
+    // Expression codegen - emits temp declaration, returns expression string
     std::string e(Expr *x) {
         if (auto *n = dynamic_cast<NumberExpr *>(x)) {
             auto t = f("t{}", tmp++);
@@ -56,7 +56,7 @@ struct GenCpp {
             return t;
         }
         if (auto *v = dynamic_cast<VarExpr *>(x))
-            return v->name;
+            return f("REF({})", v->name);
         if (auto *u = dynamic_cast<NegExpr *>(x)) {
             auto a = e(u->e.get()), t = f("t{}", tmp++);
             p("  NEG({}, {});\n", t, a);
