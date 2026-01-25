@@ -3,109 +3,17 @@
 
 module e1peg
 
-import std/os/file
-import std/os/path
-import std/os/env
 import src/peg
 import src/pegeval
 
-pub type semval
-  SVExpr(f: (penv) -> <div> int)
-  SVStmt(f: (penv) -> <div,console,loop-break> penv)
-  SVIdent(s: string)
-  SVList(vs: list<semval>)
+pub alias e1val = semval<void>
 
-fun unwrap-list(v: semval): maybe<list<semval>>
-  match v { SVList(vs) -> Just(vs); _ -> Nothing }
+fun e1-action(name: string, txt: string, children: list<e1val>, _caps: captures<e1val>): e1val
+  handle-base(name, txt, children).default(SVList(children))
 
-fun flatten-sv(vs: list<semval>): list<semval>
-  vs.flatmap(fn(c) match unwrap-list(c) { Just(inner) -> inner; Nothing -> [c] })
-    .flatmap(fn(c) match unwrap-list(c) { Just(inner) -> inner; Nothing -> [c] })
-    .flatmap(fn(c) match unwrap-list(c) { Just(inner) -> inner; Nothing -> [c] })
-
-fun default-action(name: string, txt: string, children: list<semval>, caps: captures<semval>): semval
-  if name == "_text" then SVIdent(txt)
-  elif name == "_int" || name == "int" then
-    SVExpr(fn(_) txt.list.take-while(fn(c) c.is-digit || c == '-').string.parse-int.default(0))
-  elif name == "_str" then SVIdent(txt)
-  elif name == "_cons" then match txt
-    "Assign" -> match children
-      Cons(SVIdent(id), Cons(SVExpr(f), _)) -> SVStmt(fn(e) env-set(e, id, f(e)))
-      _ -> SVList(children)
-    "Decl" -> match children
-      Cons(SVIdent(id), _) -> SVStmt(fn(e) env-set(e, id, 0))
-      _ -> SVList(children)
-    "Int" -> match children
-      Cons(SVIdent(s), _) -> SVExpr(fn(_) s.list.take-while(fn(c) c.is-digit).string.parse-int.default(0))
-      _ -> SVExpr(fn(_) 0)
-    "Ident" -> match children
-      Cons(SVIdent(s), _) -> SVIdent(s.list.take-while(fn(c) c.is-alpha || c.is-digit || c == '_').string)
-      _ -> SVIdent("")
-    "Print" -> match children
-      Cons(SVExpr(f), _) -> SVStmt(fn(e) { println(f(e).show); e })
-      _ -> SVStmt(fn(e) e)
-    "BreakIfz" -> match children
-      Cons(SVExpr(f), _) -> SVStmt(fn(e) if f(e) == 0 then do-break(e) else e)
-      _ -> SVStmt(fn(e) e)
-    "Loop" -> match children
-      Cons(SVStmt(body), _) -> SVStmt(fn(e) exec-loop(e, body))
-      _ -> SVStmt(fn(e) e)
-    "Block" ->
-      val stmts = flatten-sv(match children { Cons(SVList(vs), _) -> vs; _ -> children })
-        .filter(fn(c) match c { SVStmt(_) -> True; _ -> False })
-      SVStmt(fn(e) stmts.foldl(e, fn(acc, s) match s { SVStmt(f) -> f(acc); _ -> acc }))
-    "Var" -> match children
-      Cons(SVIdent(id), _) -> SVExpr(fn(e) env-get(e, id))
-      _ -> SVExpr(fn(_) 0)
-    "Add" -> match children
-      Cons(SVExpr(l), Cons(SVExpr(r), _)) -> SVExpr(fn(e) l(e) + r(e))
-      _ -> SVExpr(fn(_) 0)
-    "Sub" -> match children
-      Cons(SVExpr(l), Cons(SVExpr(r), _)) -> SVExpr(fn(e) l(e) - r(e))
-      _ -> SVExpr(fn(_) 0)
-    "Neg" -> match children
-      Cons(SVExpr(f), _) -> SVExpr(fn(e) 0 - f(e))
-      _ -> SVExpr(fn(_) 0)
-    _ -> SVList(children)
-  elif name == "_lit" then SVList(children)
-  else match children
-    Cons(c, Nil) -> c
-    _ -> SVList(children)
-
-fun exec-safe(v: semval, e: penv): <div, console> penv
-  with ctl do-break(e1)
-    println("Error: 'break_ifz' used outside of loop")
-    e1
-  match v
-    SVStmt(f) -> f(e)
-    SVList(Cons(x, _)) -> exec-safe(x, e)
-    _ -> e
+fun exec-ext(_x: void, e: penv): <div,console,loop-break> penv
+  e
 
 pub fun main()
-  val args = get-args()
-  val prog-path = match args { Cons(p, _) -> p; Nil -> "examples/example.e1" }
-  val arg1-val = match args { Cons(_, Cons(n, _)) -> n.parse-int.default(0); _ -> 0 }
-  val arg2-val = match args { Cons(_, Cons(_, Cons(n, _))) -> n.parse-int.default(0); _ -> 0 }
-
-  val g = parse-peg(read-text-file("src/e1.peg".path))
-  val prog = read-text-file(prog-path.path)
-  println("e1: " ++ prog-path ++ " (" ++ prog.count.int/show ++ " chars)")
-
-  var input := prog.slice
-  var current-env: penv := [("arg1", arg1-val), ("arg2", arg2-val)]
-
-  match peg-exec-partial(g, [], default-action, "_", input)
-    Just((rest, _)) -> input := rest
-    Nothing -> ()
-
-  while { !input.is-empty }
-    match peg-exec-partial(g, [], default-action, "statement", input)
-      Just((rest, sv)) ->
-        current-env := exec-safe(sv, current-env)
-        match peg-exec-partial(g, [], default-action, "_", rest)
-          Just((rest2, _)) -> input := rest2
-          Nothing -> input := rest
-      Nothing ->
-        if !input.is-empty then println("Parse failed at: " ++ input.string.first(20).string ++ "...")
-        input := "".slice
-  println("")
+  run-interpreter("e1", "src/e1.peg", "examples/example.e1", e1-action, exec-ext,
+    "Error: 'break_ifz' used outside of loop")

@@ -26,7 +26,7 @@ make koka-e1
 ```
 
 **`e1peg.koka` — Single-Phase (e1):**
-No AST — semantic actions during parsing produce thunks. Uses packrat memoization.
+No AST — semantic actions during parsing produce thunks. Uses shared `pegeval.koka` runtime.
 
 ```bash
 make koka-peg-e1
@@ -38,6 +38,13 @@ Extends e1peg with case statements, comparisons, and multiplication/division.
 ```bash
 make koka-peg-e2
 ```
+
+**`pegeval.koka` — Shared Runtime:**
+Parameterized `semval<x>` type allows level-specific extensions while sharing:
+- Environment operations (`env-get`, `env-set`)
+- Loop control (`loop-break` effect, `exec-loop`)
+- Base constructor handling (`handle-base`)
+- Generic interpreter loop (`run-interpreter`)
 
 Both use algebraic effects for `break`:
 ```koka
@@ -182,8 +189,10 @@ src/
   e1_bigint.hpp    — Bigint implementation
   e1_rt_bigint.cpp — LLVM runtime wrappers
   e1.koka          — Koka interpreter (e1)
-  e1peg.koka       — Koka PEG interpreter (e1)
-  e2peg.koka       — Koka PEG interpreter (e2)
+  e1peg.koka       — Koka PEG interpreter (e1, ~20 lines)
+  e2peg.koka       — Koka PEG interpreter (e2, ~50 lines)
+  e0peg.koka       — Koka PEG interpreter (e0, ~20 lines)
+  pegeval.koka     — Shared PEG interpreter runtime
   peg.koka         — Generic PEG parser
 ```
 

@@ -3,129 +3,47 @@
 
 module e2peg
 
-import std/os/file
-import std/os/path
-import std/os/env
 import src/peg
 import src/pegeval
 
-pub type semval
-  SVExpr(f: (penv) -> <div> int)
-  SVStmt(f: (penv) -> <div,console,loop-break> penv)
-  SVIdent(s: string)
-  SVList(vs: list<semval>)
-  SVArm(cond: (penv) -> <div> int, body: (penv) -> <div,console,loop-break> penv)
+pub type e2ext
+  E2Arm(cond: (penv) -> <div> int, body: (penv) -> <div,console,loop-break> penv)
 
-fun unwrap-list(v: semval): maybe<list<semval>>
-  match v { SVList(vs) -> Just(vs); _ -> Nothing }
+pub alias e2val = semval<e2ext>
 
-fun flatten-sv(vs: list<semval>): list<semval>
-  vs.flatmap(fn(c) match unwrap-list(c) { Just(inner) -> inner; Nothing -> [c] })
-    .flatmap(fn(c) match unwrap-list(c) { Just(inner) -> inner; Nothing -> [c] })
-    .flatmap(fn(c) match unwrap-list(c) { Just(inner) -> inner; Nothing -> [c] })
-
-fun sv-binop(children: list<semval>, op: (int, int) -> int): semval
+fun e2-binop(children: list<e2val>, op: (int, int) -> int): e2val
   match children
     Cons(SVExpr(l), Cons(SVExpr(r), _)) -> SVExpr(fn(e) op(l(e), r(e)))
     _ -> SVExpr(fn(_) 0)
 
-fun exec-case(e: penv, arms: list<semval>): <div,console,loop-break> penv
+fun exec-case(e: penv, arms: list<e2val>): <div,console,loop-break> penv
   match arms
-    Cons(SVArm(cond, body), rest) -> if cond(e) != 0 then body(e) else exec-case(e, rest)
+    Cons(SVExt(E2Arm(cond, body)), rest) -> if cond(e) != 0 then body(e) else exec-case(e, rest)
     _ -> e
 
-fun default-action(name: string, txt: string, children: list<semval>, caps: captures<semval>): semval
-  if name == "_text" then SVIdent(txt)
-  elif name == "_int" || name == "int" then
-    SVExpr(fn(_) txt.list.take-while(fn(c) c.is-digit || c == '-').string.parse-int.default(0))
-  elif name == "_str" then SVIdent(txt)
-  elif name == "_cons" then match txt
-    "Assign" -> match children
-      Cons(SVIdent(id), Cons(SVExpr(f), _)) -> SVStmt(fn(e) env-set(e, id, f(e)))
-      _ -> SVList(children)
-    "Decl" -> match children
-      Cons(SVIdent(id), _) -> SVStmt(fn(e) env-set(e, id, 0))
-      _ -> SVList(children)
-    "Int" -> match children
-      Cons(SVIdent(s), _) -> SVExpr(fn(_) s.list.take-while(fn(c) c.is-digit).string.parse-int.default(0))
-      _ -> SVExpr(fn(_) 0)
-    "Ident" -> match children
-      Cons(SVIdent(s), _) -> SVIdent(s.list.take-while(fn(c) c.is-alpha || c.is-digit || c == '_').string)
-      _ -> SVIdent("")
-    "Print" -> match children
-      Cons(SVExpr(f), _) -> SVStmt(fn(e) { println(f(e).show); e })
-      _ -> SVStmt(fn(e) e)
-    "Break" -> SVStmt(fn(e) do-break(e))
-    "Loop" -> match children
-      Cons(SVStmt(body), _) -> SVStmt(fn(e) exec-loop(e, body))
-      _ -> SVStmt(fn(e) e)
-    "Block" ->
-      val stmts = flatten-sv(match children { Cons(SVList(vs), _) -> vs; _ -> children })
-        .filter(fn(c) match c { SVStmt(_) -> True; _ -> False })
-      SVStmt(fn(e) stmts.foldl(e, fn(acc, s) match s { SVStmt(f) -> f(acc); _ -> acc }))
-    "Case" ->
-      val arms = flatten-sv(children).filter(fn(c) match c { SVArm(_, _) -> True; _ -> False })
-      SVStmt(fn(e) exec-case(e, arms))
+fun e2-action(name: string, txt: string, children: list<e2val>, _caps: captures<e2val>): e2val
+  if name == "_cons" then match txt
+    "Mul" -> e2-binop(children, fn(a, b) a * b)
+    "Div" -> e2-binop(children, fn(a, b) if b == 0 then 0 else a / b)
+    "Mod" -> e2-binop(children, fn(a, b) if b == 0 then 0 else a % b)
+    "Eq" -> e2-binop(children, fn(a, b) if a == b then 1 else 0)
+    "Ne" -> e2-binop(children, fn(a, b) if a != b then 1 else 0)
+    "Lt" -> e2-binop(children, fn(a, b) if a < b then 1 else 0)
+    "Gt" -> e2-binop(children, fn(a, b) if a > b then 1 else 0)
+    "Le" -> e2-binop(children, fn(a, b) if a <= b then 1 else 0)
+    "Ge" -> e2-binop(children, fn(a, b) if a >= b then 1 else 0)
     "Arm" -> match children
-      Cons(SVExpr(cond), Cons(SVStmt(body), _)) -> SVArm(cond, body)
+      Cons(SVExpr(cond), Cons(SVStmt(body), _)) -> SVExt(E2Arm(cond, body))
       _ -> SVList(children)
-    "Var" -> match children
-      Cons(SVIdent(id), _) -> SVExpr(fn(e) env-get(e, id))
-      _ -> SVExpr(fn(_) 0)
-    "Neg" -> match children
-      Cons(SVExpr(f), _) -> SVExpr(fn(e) 0 - f(e))
-      _ -> SVExpr(fn(_) 0)
-    "Add" -> sv-binop(children, fn(a, b) a + b)
-    "Sub" -> sv-binop(children, fn(a, b) a - b)
-    "Mul" -> sv-binop(children, fn(a, b) a * b)
-    "Div" -> sv-binop(children, fn(a, b) if b == 0 then 0 else a / b)
-    "Mod" -> sv-binop(children, fn(a, b) if b == 0 then 0 else a % b)
-    "Eq" -> sv-binop(children, fn(a, b) if a == b then 1 else 0)
-    "Ne" -> sv-binop(children, fn(a, b) if a != b then 1 else 0)
-    "Lt" -> sv-binop(children, fn(a, b) if a < b then 1 else 0)
-    "Gt" -> sv-binop(children, fn(a, b) if a > b then 1 else 0)
-    "Le" -> sv-binop(children, fn(a, b) if a <= b then 1 else 0)
-    "Ge" -> sv-binop(children, fn(a, b) if a >= b then 1 else 0)
-    _ -> SVList(children)
-  elif name == "_lit" then SVList(children)
-  else match children
-    Cons(c, Nil) -> c
-    _ -> SVList(children)
+    "Case" ->
+      val arms = flatten-sv(children).filter(fn(c) match c { SVExt(_) -> True; _ -> False })
+      SVStmt(fn(e) exec-case(e, arms))
+    _ -> handle-base(name, txt, children).default(SVList(children))
+  else handle-base(name, txt, children).default(SVList(children))
 
-fun exec-safe(v: semval, e: penv): <div, console> penv
-  with ctl do-break(e1)
-    println("Error: 'break' used outside of loop")
-    e1
-  match v
-    SVStmt(f) -> f(e)
-    SVList(Cons(x, _)) -> exec-safe(x, e)
-    _ -> e
+fun exec-ext(_x: e2ext, e: penv): <div,console,loop-break> penv
+  e
 
 pub fun main()
-  val args = get-args()
-  val prog-path = match args { Cons(p, _) -> p; Nil -> "examples/example.e2" }
-  val arg1-val = match args { Cons(_, Cons(n, _)) -> n.parse-int.default(0); _ -> 0 }
-  val arg2-val = match args { Cons(_, Cons(_, Cons(n, _))) -> n.parse-int.default(0); _ -> 0 }
-
-  val g = parse-peg(read-text-file("src/e2.peg".path))
-  val prog = read-text-file(prog-path.path)
-  println("e2: " ++ prog-path ++ " (" ++ prog.count.int/show ++ " chars)")
-
-  var input := prog.slice
-  var current-env: penv := [("arg1", arg1-val), ("arg2", arg2-val)]
-
-  match peg-exec-partial(g, [], default-action, "_", input)
-    Just((rest, _)) -> input := rest
-    Nothing -> ()
-
-  while { !input.is-empty }
-    match peg-exec-partial(g, [], default-action, "statement", input)
-      Just((rest, sv)) ->
-        current-env := exec-safe(sv, current-env)
-        match peg-exec-partial(g, [], default-action, "_", rest)
-          Just((rest2, _)) -> input := rest2
-          Nothing -> input := rest
-      Nothing ->
-        if !input.is-empty then println("Parse failed at: " ++ input.string.first(20).string ++ "...")
-        input := "".slice
-  println("")
+  run-interpreter("e2", "src/e2.peg", "examples/example.e2", e2-action, exec-ext,
+    "Error: 'break' used outside of loop")
