@@ -18,8 +18,9 @@ break_stmt      = "break_ifz" _ expression  @break_stmt
 print_stmt      = "print" _ expression  @print_stmt
 
 // Bindings (tag must be at end of entire rule, after all alternatives)
-binding         = ident _ ":=" _ expression
-                / ident _ ":"  @binding
+// Named captures: id for identifier, e for expression
+binding         = id:ident _ ":=" _ e:expression
+                / id:ident _ ":"  @binding
 
 // Expressions
 expression      = sum_expr  @expression

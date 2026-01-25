@@ -449,34 +449,58 @@ pub fun ptree-show(t: ptree, indent: int = 0): <console, div> ()
 // Execute grammar with callbacks instead of building parse trees
 
 // Semantic value: polymorphic, defined by the user
-// Action: called when a rule matches, receives (rule_name, matched_text, child_values) -> value
-pub alias action<s> = (string, string, list<s>) -> s
+// Action: called when a rule matches, receives (rule_name, matched_text, child_values, named_captures) -> value
+// Named captures: list of (name, value) pairs from n:pattern syntax
+pub alias captures<s> = list<(string, s)>
+pub alias action<s> = (string, string, list<s>, captures<s>) -> s
 
 // Action table: maps rule names to actions
 pub alias actions<s> = list<(string, action<s>)>
+
+// Helper to lookup a capture by name
+pub fun capture-get(caps: captures<s>, name: string): maybe<s>
+  match caps.filter(fn(p) p.fst == name)
+    Cons((_, v), _) -> Just(v)
+    Nil -> Nothing
 
 fun action-lookup(acts: actions<s>, name: string, default-action: action<s>): action<s>
   match acts.filter(fn(a) a.fst == name)
     Cons((_, act), _) -> act
     Nil -> default-action
 
+// Internal: value with optional capture name
+type captured<s>
+  Captured(cname: maybe<string>, cval: s)
+
+fun captured-val(c: captured<s>): s
+  c.cval
+
+fun to-captures(cs: list<captured<s>>): captures<s>
+  cs.filter-map fn(c)
+    match c
+      Captured(Just(n), v) -> Just((n, v))
+      _ -> Nothing
+
+fun to-values(cs: list<captured<s>>): list<s>
+  cs.map(captured-val)
+
 // Execute PEG with semantic actions
 // Returns (remaining_input, semantic_value) or fails
-fun peg-exec-match(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: pstate): <peg-fail, div> (pstate, s)
+fun peg-exec-match(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: pstate): <peg-fail, div> (pstate, captured<s>)
   match p
     PLit(lit) ->
       if s.string.sslice/starts-with(lit).bool then
-        (s.advance(lit.count), def("_lit", lit, []))
+        (s.advance(lit.count), Captured(Nothing, def("_lit", lit, [], [])))
       else fail()
 
     PAny ->
       match s.next
-        Just((c, rest)) -> (rest, def("_any", c.string, []))
+        Just((c, rest)) -> (rest, Captured(Nothing, def("_any", c.string, [], [])))
         Nothing -> fail()
 
     PClass(ranges, neg) ->
       match s.next
-        Just((c, rest)) | in-class(c, ranges, neg) -> (rest, def("_class", c.string, []))
+        Just((c, rest)) | in-class(c, ranges, neg) -> (rest, Captured(Nothing, def("_class", c.string, [], [])))
         _ -> fail()
 
     PSeq(ps) ->
@@ -486,7 +510,10 @@ fun peg-exec-match(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: psta
         val (s1, v1) = peg-exec-match(g, acts, def, p1, cur)
         cur := s1
         vals := Cons(v1, vals)
-      (cur, def("_seq", s.string.first(s.count - cur.count).string, vals.reverse))
+      val children = vals.reverse
+      val caps = to-captures(children)
+      val vs = to-values(children)
+      (cur, Captured(Nothing, def("_seq", s.string.first(s.count - cur.count).string, vs, caps)))
 
     PChoice(ps) ->
       peg-exec-choice(g, acts, def, ps, s)
@@ -498,48 +525,48 @@ fun peg-exec-match(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: psta
         match peg-exec-try(g, acts, def, p1, cur)
           Just((s1, v1)) -> { cur := s1; vals := Cons(v1, vals) }
           Nothing -> ()
-      (cur, def("_star", s.string.first(s.count - cur.count).string, vals.reverse))
+      val children = vals.reverse
+      (cur, Captured(Nothing, def("_star", s.string.first(s.count - cur.count).string, to-values(children), to-captures(children))))
 
     PPlus(p1) ->
       val (s1, v1) = peg-exec-match(g, acts, def, p1, s)
       val (s2, _) = peg-exec-match(g, acts, def, PStar(p1), s1)
-      (s2, def("_plus", s.string.first(s.count - s2.count).string, [v1]))
+      (s2, Captured(Nothing, def("_plus", s.string.first(s.count - s2.count).string, [v1.cval], [])))
 
     POpt(p1) ->
       match peg-exec-try(g, acts, def, p1, s)
-        Just((s1, v1)) -> (s1, def("_opt", s.string.first(s.count - s1.count).string, [v1]))
-        Nothing -> (s, def("_opt", "", []))
+        Just((s1, v1)) -> (s1, Captured(Nothing, def("_opt", s.string.first(s.count - s1.count).string, [v1.cval], [])))
+        Nothing -> (s, Captured(Nothing, def("_opt", "", [], [])))
 
     PNot(p1) ->
       match peg-exec-try(g, acts, def, p1, s)
         Just(_) -> fail()
-        Nothing -> (s, def("_not", "", []))
+        Nothing -> (s, Captured(Nothing, def("_not", "", [], [])))
 
     PAnd(p1) ->
       val _ = peg-exec-match(g, acts, def, p1, s)
-      (s, def("_and", "", []))
+      (s, Captured(Nothing, def("_and", "", [], [])))
 
     PRule(name) ->
       val (body, tag) = grammar-lookup(g, name)
       val (s1, v1) = peg-exec-match(g, acts, def, body, s)
       val txt = s.string.first(s.count - s1.count).string
-      // Use tag if present, otherwise fall back to rule name
       val action-name = tag.default(name)
       val act = action-lookup(acts, action-name, def)
-      (s1, act(action-name, txt, [v1]))
+      // Pass captures from the body match
+      val caps = match v1 { Captured(_, _) -> [] }  // captures already processed in seq
+      (s1, Captured(Nothing, act(action-name, txt, [v1.cval], caps)))
 
-    PCapture(name, p1) ->
+    PCapture(cname, p1) ->
       val (s1, v1) = peg-exec-match(g, acts, def, p1, s)
-      val txt = s.string.first(s.count - s1.count).string
-      // Named capture: wrap value with capture name for action lookup
-      val act = action-lookup(acts, "_capture", def)
-      (s1, act(name, txt, [v1]))
+      // Mark this value with the capture name
+      (s1, Captured(Just(cname), v1.cval))
 
-fun peg-exec-try(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: pstate): <div> maybe<(pstate, s)>
+fun peg-exec-try(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: pstate): <div> maybe<(pstate, captured<s>)>
   with ctl fail() Nothing
   Just(peg-exec-match(g, acts, def, p, s))
 
-fun peg-exec-choice(g: grammar, acts: actions<s>, def: action<s>, ps: list<peg>, s: pstate): <peg-fail, div> (pstate, s)
+fun peg-exec-choice(g: grammar, acts: actions<s>, def: action<s>, ps: list<peg>, s: pstate): <peg-fail, div> (pstate, captured<s>)
   match ps
     Nil -> fail()
     Cons(p, rest) ->
@@ -550,11 +577,13 @@ fun peg-exec-choice(g: grammar, acts: actions<s>, def: action<s>, ps: list<peg>,
 // Public API for semantic action execution
 pub fun peg-exec(g: grammar, acts: actions<s>, def: action<s>, start: string, input: string): <div> maybe<s>
   match peg-exec-try(g, acts, def, PRule(start), input.slice)
-    Just((_, v)) -> Just(v)
+    Just((_, v)) -> Just(v.cval)
     Nothing -> Nothing
 
 pub fun peg-exec-partial(g: grammar, acts: actions<s>, def: action<s>, start: string, input: sslice): <div> maybe<(sslice, s)>
-  peg-exec-try(g, acts, def, PRule(start), input)
+  match peg-exec-try(g, acts, def, PRule(start), input)
+    Just((rest, v)) -> Just((rest, v.cval))
+    Nothing -> Nothing
 
 // Dummy main for standalone compilation
 pub fun main(): console ()
