@@ -100,8 +100,12 @@ pub fun main(): <console, div, exn> ()
       val b-nodes = ptree-find(t, "b")
       test("named capture 'a' found", a-nodes.length == 1)
       test("named capture 'b' found", b-nodes.length == 1)
-      test("named capture 'a' text", a-nodes.head.map(ptree-text).default("") == "foo")
-      test("named capture 'b' text", b-nodes.head.map(ptree-text).default("") == "123")
+      test("named capture 'a' text", a-nodes.head.map(ptree-text).maybe/default("") == "foo")
+      test("named capture 'b' text", b-nodes.head.map(ptree-text).maybe/default("") == "123")
     Nothing -> ()
+
+  // Inline action parsing
+  val g19 = parse-peg("r = [a-z]+ { $0 }")
+  test("inline action parses", peg-parse(g19, "r", "hello").is-just)
 
   println("\n=== Done ===")

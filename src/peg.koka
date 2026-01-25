@@ -20,9 +20,19 @@ pub type peg
   PClass(ranges: list<(char,char)>, negated: bool)
   PRule(name: string)
   PCapture(name: string, p: peg)  // Named capture: name:pattern
+  PAction(p: peg, act: iexpr)     // Inline action: pattern { expr }
   PAny
 
-// Rule with optional action tag: (name, body, maybe<tag>)
+// Inline action expression AST
+pub type iexpr
+  IVar(name: string)      // $name or $0
+  IStr(s: string)         // "literal"
+  IInt(n: int)            // 123
+  ICall(fname: string, args: list<iexpr>)  // fn(args)
+  IField(e: iexpr, fname: string)  // e.field
+  ICons(tag: string, args: list<iexpr>)  // Tag(args)
+
+// Rule with optional action tag or inline action
 pub alias rule = (string, peg, maybe<string>)
 pub alias grammar = list<rule>
 
@@ -53,6 +63,7 @@ fun peg-ident(): parse string
   val c = choose([alpha, { char('_') }])
   val cs = many { choose([alpha-num, { char('_') }]) }
   (Cons(c, cs)).string
+
 
 fun peg-char-esc(): parse char
   char('\\')
@@ -131,11 +142,89 @@ fun peg-seq(): <parse,div> peg
     Cons(p, Nil) -> p
     _ -> PSeq(ps)
 
+// === Inline Action Expression Parser ===
+// Parses expressions like: $0, $name, int($n), Cons($a, $b), "str"
+
+fun iexpr-var(): parse iexpr
+  char('$')
+  val name = choose([
+    { peg-ident() },
+    { many1(fn() one-of("0123456789")).string }
+  ])
+  IVar(name)
+
+fun iexpr-string(): parse iexpr
+  char('"')
+  val cs = many { choose([peg-char-esc, { none-of("\"\\") }]) }
+  char('"')
+  IStr(cs.string)
+
+fun iexpr-int(): parse iexpr
+  val ds = many1(fn() one-of("0123456789"))
+  IInt(ds.string.parse-int.default(0))
+
+fun iexpr-atom(): <parse,div> iexpr
+  peg-ws()
+  choose([
+    iexpr-var,
+    iexpr-string,
+    iexpr-int,
+    {
+      // Constructor or function call: Name(args) or Name
+      val name = peg-ident()
+      peg-ws()
+      optional(ICons(name, [])) {
+        char('(')
+        peg-ws()
+        val args = optional([]) {
+          val first = iexpr-expr()
+          val rest = many { peg-ws(); char(','); peg-ws(); iexpr-expr() }
+          Cons(first, rest)
+        }
+        peg-ws()
+        char(')')
+        if name.list.list/maybe/head.maybe/default('a').is-upper then ICons(name, args)
+        else ICall(name, args)
+      }
+    }
+  ])
+
+fun iexpr-expr(): <parse,div> iexpr
+  val e = iexpr-atom()
+  // Optional field access: e.field
+  peg-ws()
+  optional(e) {
+    char('.')
+    val f = peg-ident()
+    IField(e, f)
+  }
+
+fun peg-inline-action(): <parse,div> maybe<iexpr>
+  optional(Nothing) {
+    peg-ws()
+    char('{')
+    peg-ws()
+    val e = iexpr-expr()
+    peg-ws()
+    char('}')
+    Just(e)
+  }
+
+// Sequence with optional inline action
+fun peg-seq-with-action(): <parse,div> peg
+  val ps = many1(peg-prefix)
+  val p = match ps
+    Cons(p1, Nil) -> p1
+    _ -> PSeq(ps)
+  match peg-inline-action()
+    Just(act) -> PAction(p, act)
+    Nothing -> p
+
 fun peg-choice(): <parse,div> peg
-  val first = peg-seq()
+  val first = peg-seq-with-action()
   val rest = many {
     peg-ws(); peg-skip(); char('/'); peg-skip()
-    peg-seq()
+    peg-seq-with-action()
   }
   match rest
     Nil -> first
@@ -275,6 +364,10 @@ fun peg-match(g: grammar, p: peg, s: pstate): <peg-fail, div> (pstate, ptree)
       val (s1, t1) = peg-match(g, p1, s)
       (s1, PNode(name, [t1], s.string.first(s.count - s1.count).string))
 
+    PAction(p1, _) ->
+      // For tree-building, just match the pattern (action is for semantic execution)
+      peg-match(g, p1, s)
+
 fun peg-choice-match(g: grammar, ps: list<peg>, s: pstate): <peg-fail, div> (pstate, ptree)
   match ps
     Nil -> fail()
@@ -380,6 +473,9 @@ fun peg-match-memo(g: grammar, p: peg, s: pstate, memo: memo-table, orig: pstate
     PCapture(name, p1) ->
       val (m1, (s1, t1)) = peg-match-memo(g, p1, s, memo, orig)
       (m1, (s1, PNode(name, [t1], s.string.first(s.count - s1.count).string)))
+
+    PAction(p1, _) ->
+      peg-match-memo(g, p1, s, memo, orig)
 
 fun peg-choice-match-memo(g: grammar, ps: list<peg>, s: pstate, memo: memo-table, orig: pstate): <peg-fail, div> (memo-table, (pstate, ptree))
   match ps
@@ -561,6 +657,38 @@ fun peg-exec-match(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: psta
       val (s1, v1) = peg-exec-match(g, acts, def, p1, s)
       // Mark this value with the capture name
       (s1, Captured(Just(cname), v1.cval))
+
+    PAction(p1, act) ->
+      val (s1, v1) = peg-exec-match(g, acts, def, p1, s)
+      val txt = s.string.first(s.count - s1.count).string
+      // Get captures from the matched pattern
+      val children = match v1 { Captured(_, _) -> [v1] }
+      val caps = to-captures(children)
+      // Evaluate inline action with captures and text
+      val result = eval-iexpr(act, txt, caps, def)
+      (s1, Captured(Nothing, result))
+
+// === Inline Action Evaluator ===
+// Evaluates iexpr with access to $0 (text), $name (captures), and built-ins
+
+fun eval-iexpr(e: iexpr, txt: string, caps: captures<s>, def: action<s>): <div> s
+  match e
+    IVar(name) ->
+      if name == "0" then def("_text", txt, [], [])
+      else match capture-get(caps, name)
+        Just(v) -> v
+        Nothing -> def("_undefined", name, [], [])
+    IStr(s) -> def("_str", s, [], [])
+    IInt(n) -> def("_int", n.show, [], [])
+    ICall(fname, args) ->
+      val evaled = args.map(fn(a) eval-iexpr(a, txt, caps, def))
+      def(fname, txt, evaled, [])
+    ICons(tag, args) ->
+      val evaled = args.map(fn(a) eval-iexpr(a, txt, caps, def))
+      def("_cons", tag, evaled, [])
+    IField(expr, f) ->
+      val v = eval-iexpr(expr, txt, caps, def)
+      def("_field", f, [v], [])
 
 fun peg-exec-try(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: pstate): <div> maybe<(pstate, captured<s>)>
   with ctl fail() Nothing
