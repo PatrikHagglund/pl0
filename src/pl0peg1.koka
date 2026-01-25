@@ -103,6 +103,15 @@ fun default-action(name: string, txt: string, children: list<semval>, caps: capt
       "Ident" -> match children
         Cons(SVIdent(s), _) -> SVIdent(s.list.take-while(fn(c) c.is-alpha || c.is-digit || c == '_').string)
         _ -> SVIdent("")
+      "Print" -> match children
+        Cons(SVExpr(f), _) -> SVStmt(fn(e) { println(f(e).show); e })
+        _ -> SVStmt(fn(e) e)
+      "BreakIfz" -> match children
+        Cons(SVExpr(f), _) -> SVStmt(fn(e) if f(e) == 0 then do-break(e) else e)
+        _ -> SVStmt(fn(e) e)
+      "Loop" -> match children
+        Cons(SVStmt(body), _) -> SVStmt(fn(e) exec-loop-thunk(e, body))
+        _ -> SVStmt(fn(e) e)
       "Expr" -> match children
         Cons(c, _) -> c
         _ -> SVList(children)
@@ -324,15 +333,11 @@ fun act-op(name: string, txt: string, children: list<semval>, caps: captures<sem
 // Build the action table
 fun pl0-actions(): actions<semval>
   [
-    // int_lit and ident now use inline actions { Int($n) } / { Ident($id) }
+    // int_lit, ident, binding, print, break, loop use inline actions
     ("atom", act-atom),
     ("unary", act-unary),
     ("sum_expr", act-sum-expr),
     ("expression", act-expression),
-    // binding now uses inline actions { Assign($id, $e) } / { Decl($id) }
-    ("print_stmt", act-print),
-    ("break_stmt", act-break-if),
-    ("loop_stmt", act-loop),
     ("block", act-block),
     ("statement", act-statement)
   ]

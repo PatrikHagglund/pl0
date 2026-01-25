@@ -13,9 +13,9 @@ program         = _ statement*
 statement       = binding / loop_stmt / break_stmt / print_stmt / block  @statement
 
 block           = "{" _ (statement ";"? _)* "}" _  @block
-loop_stmt       = "loop" _ statement  @loop_stmt
-break_stmt      = "break_ifz" _ expression  @break_stmt
-print_stmt      = "print" _ expression  @print_stmt
+loop_stmt       = "loop" _ body:statement { Loop($body) }
+break_stmt      = "break_ifz" _ cond:expression { BreakIfz($cond) }
+print_stmt      = "print" _ e:expression { Print($e) }
 
 // Bindings - using inline actions
 // Named captures: id for identifier, e for expression
