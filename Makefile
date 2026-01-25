@@ -59,7 +59,11 @@ ifneq ($(BUILD_MODE),native)
 	touch .image
 endif
 CXXSTD = -std=gnu++26
-OPT = -O3
+OPT = -O3 -march=native
+KOKA_OPT = -O3
+# For LLVM IR generation: no -march=native, as it embeds CPU-specific intrinsics
+# that prevent optimization when the linked IR is compiled to native code (2x slowdown)
+OPT_LLVM_IR = -O3
 CXXFLAGS = $(CXXSTD) $(OPT) -Wall -Wextra -Werror -Wno-vla-cxx-extension
 
 TARGET = pl0_1
@@ -95,13 +99,13 @@ run-llvm-native: $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll
 	$(RUN) sh -c "./pl0_1_compile --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && $(CLANG_LL) out.ll -o out && ./out"
 
 src/pl0_1_rt_bigint.ll: src/pl0_1_rt_bigint.cpp $(IMAGE_DEPS)
-	$(RUN) clang++ $(CXXSTD) -Wno-vla-cxx-extension -S -emit-llvm $(OPT) $< -o $@
+	$(RUN) clang++ $(CXXSTD) -Wno-vla-cxx-extension -S -emit-llvm $(OPT_LLVM_IR) $< -o $@
 
 clean:
 	rm -rf $(TARGET) $(TARGET_COMPILE) out.ll out out.cpp out-O0 src/.koka src/pl0peg1 src/pl01
 
 BENCH_1 = examples/bench_1_factorial.pl0
-BENCH_1_ITERS = 10000
+BENCH_1_ITERS = 2000
 BENCH_1_N = 31
 BENCH_1_ARGS = $(BENCH_1_ITERS) $(BENCH_1_N)
 
@@ -120,13 +124,13 @@ bench-1: $(TARGET) $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll src/pl0peg1 src/pl01
 # Note: LLVM backend may be faster for fixed INT_BITS due to loop idiom recognition
 # (converts repeated addition to multiply) which _BitInt in C++ backend doesn't get
 BENCH_INTBITS_BITS ?= 0 64 512
-BENCH_LIMB_BITS ?= 32 64 128
+BENCH_LIMB_BITS ?= 64 32 128
 bench-intbits: $(IMAGE_DEPS)
 	@for bits in $(BENCH_INTBITS_BITS); do \
 		if [ "$$bits" = "0" ]; then \
 			for limb in $(BENCH_LIMB_BITS); do \
 				echo ""; echo "========== INT_BITS=0, LIMB_BITS=$$limb =========="; \
-				$(RUN) clang++ $(CXXSTD) -Wno-vla-cxx-extension -DLIMB_BITS=$$limb -S -emit-llvm $(OPT) src/pl0_1_rt_bigint.cpp -o src/pl0_1_rt_bigint.ll; \
+				$(RUN) clang++ $(CXXSTD) -Wno-vla-cxx-extension -DLIMB_BITS=$$limb -S -emit-llvm $(OPT_LLVM_IR) src/pl0_1_rt_bigint.cpp -o src/pl0_1_rt_bigint.ll; \
 				$(CXX) $(CXXFLAGS) -DINT_BITS=0 -DLIMB_BITS=$$limb -o $(TARGET) $(SRC); \
 				$(CXX) $(CXXFLAGS) -DINT_BITS=0 -DLIMB_BITS=$$limb -o $(TARGET_COMPILE) $(SRC_COMPILE); \
 				$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && $(CLANGXX_OUT) -DLIMB_BITS=$$limb out.cpp -o out_cpp"; \
@@ -148,15 +152,15 @@ bench-intbits: $(IMAGE_DEPS)
 	done
 
 src/pl0peg1: src/pl0peg1.koka src/peg.koka $(IMAGE_DEPS)
-	$(KOKA) -O3 --compile src/peg.koka 2>/dev/null
-	$(KOKA) -O3 -o src/pl0peg1 src/pl0peg1.koka 2>/dev/null
+	$(KOKA) $(KOKA_OPT) --compile src/peg.koka 2>/dev/null
+	$(KOKA) $(KOKA_OPT) -o src/pl0peg1 src/pl0peg1.koka 2>/dev/null
 	chmod +x src/pl0peg1
 
 src/pl01: src/pl01.koka src/pl01-types.koka src/pl01-parser.koka src/pl01-eval.koka $(IMAGE_DEPS)
-	$(KOKA) -O3 -l src/pl01-types.koka 2>/dev/null
-	$(KOKA) -O3 -l src/pl01-parser.koka 2>/dev/null
-	$(KOKA) -O3 -l src/pl01-eval.koka 2>/dev/null
-	$(KOKA) -O3 -o src/pl01 src/pl01.koka 2>/dev/null
+	$(KOKA) $(KOKA_OPT) -l src/pl01-types.koka 2>/dev/null
+	$(KOKA) $(KOKA_OPT) -l src/pl01-parser.koka 2>/dev/null
+	$(KOKA) $(KOKA_OPT) -l src/pl01-eval.koka 2>/dev/null
+	$(KOKA) $(KOKA_OPT) -o src/pl01 src/pl01.koka 2>/dev/null
 	chmod +x src/pl01
 
 koka-pl0: $(IMAGE_DEPS)
@@ -182,16 +186,16 @@ test: $(TARGET) $(TARGET_COMPILE) src/pl0_1_rt_bigint.ll src/pl0peg1 src/pl01
 	  if [ "$$actual" = "$$expected" ]; then echo "PASS $$name"; pass=$$((pass+1)); \
 	  else echo "FAIL $$name"; printf "  expected: %s\n" "$$expected" | head -1; printf "  actual: %s\n" "$$actual" | head -1; fail=$$((fail+1)); fi; \
 	}; \
-	./$(TARGET_COMPILE) examples/example_0.pl0 > /tmp/out.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src /tmp/out.cpp -o /tmp/out_cpp; \
-	./$(TARGET_COMPILE) --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && clang -Wno-override-module -O3 out.ll -o /tmp/out_llvm; \
-	./$(TARGET_COMPILE) examples/example_1.pl0 > /tmp/out1.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src /tmp/out1.cpp -o /tmp/out1_cpp; \
-	./$(TARGET_COMPILE) --llvm examples/example_1.pl0 > /tmp/prog1.ll && llvm-link /tmp/prog1.ll src/pl0_1_rt_bigint.ll -S -o /tmp/out1.ll && clang -Wno-override-module -O3 /tmp/out1.ll -o /tmp/out1_llvm; \
-	./$(TARGET_COMPILE) examples/bench_1_factorial.pl0 > /tmp/fact.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src /tmp/fact.cpp -o /tmp/fact_cpp; \
-	./$(TARGET_COMPILE) --llvm examples/bench_1_factorial.pl0 > /tmp/fact.ll && llvm-link /tmp/fact.ll src/pl0_1_rt_bigint.ll -S -o /tmp/factll.ll && clang -Wno-override-module -O3 /tmp/factll.ll -o /tmp/fact_llvm; \
-	./$(TARGET_COMPILE) examples/collatz_1.pl0 > /tmp/coll.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src /tmp/coll.cpp -o /tmp/coll_cpp; \
-	./$(TARGET_COMPILE) --llvm examples/collatz_1.pl0 > /tmp/coll.ll && llvm-link /tmp/coll.ll src/pl0_1_rt_bigint.ll -S -o /tmp/collll.ll && clang -Wno-override-module -O3 /tmp/collll.ll -o /tmp/coll_llvm; \
-	./$(TARGET_COMPILE) examples/gcd_1.pl0 > /tmp/gcd.cpp && clang++ -std=gnu++26 -Wno-vla-cxx-extension -O3 -I src /tmp/gcd.cpp -o /tmp/gcd_cpp; \
-	./$(TARGET_COMPILE) --llvm examples/gcd_1.pl0 > /tmp/gcd.ll && llvm-link /tmp/gcd.ll src/pl0_1_rt_bigint.ll -S -o /tmp/gcdll.ll && clang -Wno-override-module -O3 /tmp/gcdll.ll -o /tmp/gcd_llvm; \
+	./$(TARGET_COMPILE) examples/example_0.pl0 > /tmp/out.cpp && $(CLANGXX_OUT) /tmp/out.cpp -o /tmp/out_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/example_0.pl0 > /tmp/prog.ll && $(LLVM_LINK) && $(CLANG_LL) out.ll -o /tmp/out_llvm; \
+	./$(TARGET_COMPILE) examples/example_1.pl0 > /tmp/out1.cpp && $(CLANGXX_OUT) /tmp/out1.cpp -o /tmp/out1_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/example_1.pl0 > /tmp/prog1.ll && llvm-link /tmp/prog1.ll src/pl0_1_rt_bigint.ll -S -o /tmp/out1.ll && $(CLANG_LL) /tmp/out1.ll -o /tmp/out1_llvm; \
+	./$(TARGET_COMPILE) examples/bench_1_factorial.pl0 > /tmp/fact.cpp && $(CLANGXX_OUT) /tmp/fact.cpp -o /tmp/fact_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/bench_1_factorial.pl0 > /tmp/fact.ll && llvm-link /tmp/fact.ll src/pl0_1_rt_bigint.ll -S -o /tmp/factll.ll && $(CLANG_LL) /tmp/factll.ll -o /tmp/fact_llvm; \
+	./$(TARGET_COMPILE) examples/collatz_1.pl0 > /tmp/coll.cpp && $(CLANGXX_OUT) /tmp/coll.cpp -o /tmp/coll_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/collatz_1.pl0 > /tmp/coll.ll && llvm-link /tmp/coll.ll src/pl0_1_rt_bigint.ll -S -o /tmp/collll.ll && $(CLANG_LL) /tmp/collll.ll -o /tmp/coll_llvm; \
+	./$(TARGET_COMPILE) examples/gcd_1.pl0 > /tmp/gcd.cpp && $(CLANGXX_OUT) /tmp/gcd.cpp -o /tmp/gcd_cpp; \
+	./$(TARGET_COMPILE) --llvm examples/gcd_1.pl0 > /tmp/gcd.ll && llvm-link /tmp/gcd.ll src/pl0_1_rt_bigint.ll -S -o /tmp/gcdll.ll && $(CLANG_LL) /tmp/gcdll.ll -o /tmp/gcd_llvm; \
 	E0="7\n1\n8"; E1="6\n12\n3\n2"; COLL="5\n16\n8\n4\n2\n1"; \
 	check "example_0 cpp-interp" "./$(TARGET) examples/example_0.pl0" "$$(printf "$$E0")"; \
 	check "example_0 cpp-backend" "/tmp/out_cpp" "$$(printf "$$E0")"; \
