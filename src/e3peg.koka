@@ -1,0 +1,260 @@
+// PL/0 Level 3 interpreter using PEG grammar
+// Adds: booleans, closures, case expressions, function application
+
+module e3peg
+
+import src/peg
+import std/os/file
+import std/os/path
+import std/os/env
+
+// Runtime values: int, bool, or closure
+pub type rval
+  VInt(n: int)
+  VBool(b: bool)
+  VClosure(params: list<string>, body: expr, env: e3env)
+
+pub alias e3env = list<(string, rval)>
+
+pub type expr
+  EVal(v: rval)
+  EVar(s: string)
+  EBinop(op: string, l: expr, r: expr)
+  ENot(e: expr)
+  ENeg(e: expr)
+  EApply(f: expr, a: expr)
+  ECase(arms: list<(expr, expr)>)
+  EFunc(params: list<string>, body: expr)
+
+pub type stmt
+  SExpr(e: expr)
+  SAssign(id: string, e: expr)
+  SDecl(id: string)
+  SPrint(e: expr)
+  SLoop(body: stmt)
+  SBreak
+  SBlock(stmts: list<stmt>)
+  SCaseStmt(arms: list<(expr, stmt)>)
+
+pub type semval
+  SVExpr(e: expr)
+  SVStmt(s: stmt)
+  SVIdent(s: string)
+  SVList(vs: list<semval>)
+  SVArm(cond: expr, body: semval)
+
+fun env-get(e: e3env, key: string): rval
+  match e.filter(fn(p) p.fst == key)
+    Cons((_, v), _) -> v
+    Nil -> VInt(0)
+
+fun env-set(e: e3env, key: string, v: rval): e3env
+  Cons((key, v), e.filter(fn(p) p.fst != key))
+
+effect loop-break
+  ctl do-break(e: e3env): a
+
+fun eval(ex: expr, e: e3env): <div> rval
+  match ex
+    EVal(v) -> v
+    EVar(s) -> env-get(e, s)
+    EBinop(op, l, r) ->
+      val lv = eval(l, e)
+      val rv = eval(r, e)
+      match (op, lv, rv)
+        ("+", VInt(a), VInt(b)) -> VInt(a + b)
+        ("-", VInt(a), VInt(b)) -> VInt(a - b)
+        ("*", VInt(a), VInt(b)) -> VInt(a * b)
+        ("/", VInt(a), VInt(b)) -> VInt(if b == 0 then 0 else a / b)
+        ("%", VInt(a), VInt(b)) -> VInt(if b == 0 then 0 else a % b)
+        ("==", VInt(a), VInt(b)) -> VBool(a == b)
+        ("!=", VInt(a), VInt(b)) -> VBool(a != b)
+        ("<", VInt(a), VInt(b)) -> VBool(a < b)
+        (">", VInt(a), VInt(b)) -> VBool(a > b)
+        ("<=", VInt(a), VInt(b)) -> VBool(a <= b)
+        (">=", VInt(a), VInt(b)) -> VBool(a >= b)
+        ("&&", VBool(a), VBool(b)) -> VBool(a && b)
+        ("||", VBool(a), VBool(b)) -> VBool(a || b)
+        _ -> VInt(0)
+    ENot(inner) -> match eval(inner, e)
+      VBool(b) -> VBool(!b)
+      _ -> VBool(False)
+    ENeg(inner) -> match eval(inner, e)
+      VInt(n) -> VInt(0 - n)
+      _ -> VInt(0)
+    EApply(f, a) -> match eval(f, e)
+      VClosure(params, body, cenv) ->
+        val arg = eval(a, e)
+        match params
+          Cons(p, rest) ->
+            val newenv = env-set(cenv, p, arg)
+            if rest.is-nil then eval(body, newenv)
+            else VClosure(rest, body, newenv)
+          Nil -> eval(body, cenv)
+      _ -> VInt(0)
+    ECase(arms) ->
+      match arms
+        Cons((cond, body), rest) ->
+          match eval(cond, e)
+            VBool(True) -> eval(body, e)
+            VInt(n) | n != 0 -> eval(body, e)
+            _ -> eval(ECase(rest), e)
+        Nil -> VInt(0)
+    EFunc(params, body) -> VClosure(params, body, e)
+
+fun exec(s: stmt, e: e3env): <div,console,loop-break> e3env
+  match s
+    SExpr(_) -> e
+    SAssign(id, ex) -> env-set(e, id, eval(ex, e))
+    SDecl(id) -> env-set(e, id, VInt(0))
+    SPrint(ex) ->
+      match eval(ex, e)
+        VInt(n) -> println(n.show)
+        VBool(b) -> println(if b then "true" else "false")
+        VClosure(_, _, _) -> println("<closure>")
+      e
+    SLoop(body) ->
+      with ctl do-break(e1) e1
+      fun go(env: e3env): <div,console,loop-break> e3env
+        go(exec(body, env))
+      go(e)
+    SBreak -> do-break(e)
+    SBlock(stmts) -> stmts.foldl(e, fn(acc, st) exec(st, acc))
+    SCaseStmt(arms) ->
+      match arms
+        Cons((cond, body), rest) ->
+          match eval(cond, e)
+            VBool(True) -> exec(body, e)
+            VInt(n) | n != 0 -> exec(body, e)
+            _ -> exec(SCaseStmt(rest), e)
+        Nil -> e
+
+fun flatten-sv(vs: list<semval>): list<semval>
+  vs.flatmap(fn(c) match c { SVList(inner) -> inner; _ -> [c] })
+
+fun get-params(vs: list<semval>): list<string>
+  flatten-sv(vs).filter-map(fn(v) match v { SVIdent(s) -> Just(s); _ -> Nothing })
+
+fun sv-to-stmt(v: semval): maybe<stmt>
+  match v
+    SVStmt(s) -> Just(s)
+    SVExpr(ex) -> Just(SExpr(ex))
+    _ -> Nothing
+
+fun e3-action(name: string, txt: string, children: list<semval>, _caps: captures<semval>): semval
+  val cs = flatten-sv(children)
+  if name == "_text" then SVIdent(txt)
+  elif name == "apply_expr" then
+    // Fold left: f x y -> Apply(Apply(f, x), y)
+    val exprs = cs.filter-map(fn(v) match v { SVExpr(e) -> Just(e); _ -> Nothing })
+    match exprs
+      Nil -> SVList(cs)
+      Cons(first, rest) -> SVExpr(rest.foldl(first, fn(acc, arg) EApply(acc, arg)))
+  elif name == "_cons" then match txt
+    "Int" -> match cs
+      Cons(SVIdent(s), _) -> SVExpr(EVal(VInt(s.list.take-while(is-digit).string.parse-int.default(0))))
+      _ -> SVExpr(EVal(VInt(0)))
+    "True" -> SVExpr(EVal(VBool(True)))
+    "False" -> SVExpr(EVal(VBool(False)))
+    "Ident" -> SVIdent(cs.head.default(SVIdent("")).ident-str)
+    "Var" -> SVExpr(EVar(cs.head.default(SVIdent("")).ident-str))
+    "Add" -> binop("+", cs)
+    "Sub" -> binop("-", cs)
+    "Mul" -> binop("*", cs)
+    "Div" -> binop("/", cs)
+    "Mod" -> binop("%", cs)
+    "Eq" -> binop("==", cs)
+    "Ne" -> binop("!=", cs)
+    "Lt" -> binop("<", cs)
+    "Gt" -> binop(">", cs)
+    "Le" -> binop("<=", cs)
+    "Ge" -> binop(">=", cs)
+    "And" -> binop("&&", cs)
+    "Or" -> binop("||", cs)
+    "Not" -> match cs { Cons(SVExpr(e), _) -> SVExpr(ENot(e)); _ -> SVExpr(EVal(VBool(False))) }
+    "Neg" -> match cs { Cons(SVExpr(e), _) -> SVExpr(ENeg(e)); _ -> SVExpr(EVal(VInt(0))) }
+    "Assign" -> match cs
+      Cons(SVIdent(id), Cons(SVExpr(e), _)) -> SVStmt(SAssign(id, e))
+      _ -> SVList(cs)
+    "Decl" -> match cs { Cons(SVIdent(id), _) -> SVStmt(SDecl(id)); _ -> SVList(cs) }
+    "Print" -> match cs { Cons(SVExpr(e), _) -> SVStmt(SPrint(e)); _ -> SVList(cs) }
+    "Loop" -> match cs { Cons(SVStmt(s), _) -> SVStmt(SLoop(s)); _ -> SVList(cs) }
+    "Break" -> SVStmt(SBreak)
+    "Block" ->
+      val stmts = flatten-sv(cs).filter-map(sv-to-stmt)
+      SVStmt(SBlock(stmts))
+    "Apply" -> match cs
+      Cons(SVExpr(f), Cons(SVExpr(a), _)) -> SVExpr(EApply(f, a))
+      _ -> SVList(cs)
+    "Params" -> SVList(cs)
+    "Func" ->
+      val params = get-params(cs.init)
+      match cs.last
+        Just(SVExpr(body)) -> SVExpr(EFunc(params, body))
+        _ -> SVList(cs)
+    "StmtArm" -> match cs
+      Cons(SVExpr(cond), Cons(SVStmt(body), _)) -> SVArm(cond, SVStmt(body))
+      _ -> SVList(cs)
+    "ExprArm" -> match cs
+      Cons(SVExpr(cond), Cons(SVExpr(body), _)) -> SVArm(cond, SVExpr(body))
+      _ -> SVList(cs)
+    "CaseStmt" ->
+      val arms = flatten-sv(cs).filter-map fn(v)
+        match v { SVArm(cond, SVStmt(body)) -> Just((cond, body)); _ -> Nothing }
+      SVStmt(SCaseStmt(arms))
+    "CaseExpr" ->
+      val arms = flatten-sv(cs).filter-map fn(v)
+        match v { SVArm(cond, SVExpr(body)) -> Just((cond, body)); _ -> Nothing }
+      SVExpr(ECase(arms))
+    _ -> SVList(cs)
+  else match cs
+    Cons(c, Nil) -> c
+    _ -> SVList(cs)
+
+fun binop(op: string, cs: list<semval>): semval
+  match cs
+    Cons(SVExpr(l), Cons(SVExpr(r), _)) -> SVExpr(EBinop(op, l, r))
+    _ -> SVExpr(EVal(VInt(0)))
+
+fun ident-str(v: semval): string
+  match v
+    SVIdent(s) -> s.list.take-while(fn(c) c.is-alpha || c.is-digit || c == '_').string
+    _ -> ""
+
+fun exec-safe(sv: semval, e: e3env): <div,console> e3env
+  with ctl do-break(e1)
+    println("Error: 'break' used outside of loop")
+    e1
+  match sv
+    SVStmt(s) -> exec(s, e)
+    SVList(Cons(SVStmt(s), _)) -> exec(s, e)
+    _ -> e
+
+pub fun main()
+  val args = get-args()
+  val prog-path = match args { Cons(p, _) -> p; Nil -> "examples/example.e3" }
+  val arg1-val = match args { Cons(_, Cons(n, _)) -> n.parse-int.default(0); _ -> 0 }
+  val arg2-val = match args { Cons(_, Cons(_, Cons(n, _))) -> n.parse-int.default(0); _ -> 0 }
+
+  val g = parse-peg(read-text-file("src/e3eval.peg".path))
+  val prog = read-text-file(prog-path.path)
+  println("e3: " ++ prog-path ++ " (" ++ prog.count.int/show ++ " chars)")
+
+  var input := prog.slice
+  var current-env: e3env := [("arg1", VInt(arg1-val)), ("arg2", VInt(arg2-val))]
+
+  match peg-exec-partial(g, [], e3-action, "_", input)
+    Just((rest, _)) -> input := rest
+    Nothing -> ()
+
+  while { !input.is-empty }
+    match peg-exec-partial(g, [], e3-action, "statement", input)
+      Just((rest, sv)) ->
+        current-env := exec-safe(sv, current-env)
+        match peg-exec-partial(g, [], e3-action, "_", rest)
+          Just((rest2, _)) -> input := rest2
+          Nothing -> input := rest
+      Nothing ->
+        if !input.is-empty then println("Parse failed at: " ++ input.string.first(20).string ++ "...")
+        input := "".slice
+  println("")

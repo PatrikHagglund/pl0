@@ -1,0 +1,29 @@
+// Simple e3 example
+// Demonstrates: booleans, case expressions, functions
+
+// Boolean operations
+print true
+print false
+print 3 == 3
+print 3 != 5
+
+// Case expression
+x := case {
+  false -> 1,
+  true -> 42
+}
+print x
+
+// Function
+inc :
+inc := (n) -> n + 1
+print inc 5
+
+// Case in function
+is_zero :
+is_zero := (n) -> case {
+  n == 0 -> true,
+  true -> false
+}
+print is_zero 0
+print is_zero 5

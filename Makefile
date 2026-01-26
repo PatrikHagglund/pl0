@@ -175,6 +175,9 @@ koka-peg-e1: $(IMAGE_DEPS)
 koka-peg-e2: $(IMAGE_DEPS)
 	$(RUN) sh -c "koka --compile src/peg.koka && koka --compile src/pegeval.koka && koka -e src/e2peg.koka -- examples/example.e2"
 
+koka-peg-e3: $(IMAGE_DEPS)
+	$(RUN) sh -c "koka --compile src/peg.koka && koka -e src/e3peg.koka -- examples/example.e3"
+
 src/e2peg: src/e2peg.koka src/peg.koka src/pegeval.koka $(IMAGE_DEPS)
 	$(KOKA) $(KOKA_OPT) --compile src/peg.koka 2>/dev/null
 	$(KOKA) $(KOKA_OPT) --compile src/pegeval.koka 2>/dev/null
