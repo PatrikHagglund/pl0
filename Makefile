@@ -135,21 +135,21 @@ bench-intbits: $(IMAGE_DEPS)
 				$(RUN) clang++ $(CXXSTD) -Wno-vla-cxx-extension -DLIMB_BITS=$$limb -S -emit-llvm $(OPT_LLVM_IR) src/e1_rt_bigint.cpp -o src/e1_rt_bigint.ll; \
 				$(CXX) $(CXXFLAGS) -DINT_BITS=0 -DLIMB_BITS=$$limb -o $(TARGET) $(SRC); \
 				$(CXX) $(CXXFLAGS) -DINT_BITS=0 -DLIMB_BITS=$$limb -o $(TARGET_COMPILE) $(SRC_COMPILE); \
-				$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && $(CLANGXX_OUT) -DLIMB_BITS=$$limb out.cpp -o out_cpp"; \
-				echo "=== C++ backend ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_1_ARGS)"; \
-				$(RUN) sh -c "./$(TARGET_COMPILE) --llvm $(BENCH_1) > /tmp/prog.ll && $(LLVM_LINK)"; \
-				echo "=== LLVM backend ===" && $(RUN) sh -c "$(CLANG_LL) out.ll -o out && time ./out $(BENCH_1_ARGS)"; \
-				echo "=== C++ interpreter ===" && $(RUN) sh -c "time ./$(TARGET) $(BENCH_1) $(BENCH_1_ARGS)"; \
+				$(RUN) sh -c "./$(TARGET_COMPILE) examples/factorial.e1 > out.cpp && $(CLANGXX_OUT) -DLIMB_BITS=$$limb out.cpp -o out_cpp"; \
+				echo "=== C++ backend ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_ARGS)"; \
+				$(RUN) sh -c "./$(TARGET_COMPILE) --llvm examples/factorial.e1 > /tmp/prog.ll && $(LLVM_LINK)"; \
+				echo "=== LLVM backend ===" && $(RUN) sh -c "$(CLANG_LL) out.ll -o out && time ./out $(BENCH_ARGS)"; \
+				echo "=== C++ interpreter ===" && $(RUN) sh -c "time ./$(TARGET) examples/factorial.e1 $(BENCH_ARGS)"; \
 			done; \
 		else \
 			echo ""; echo "========== INT_BITS=$$bits =========="; \
 			$(CXX) $(CXXFLAGS) -DINT_BITS=$$bits -o $(TARGET) $(SRC); \
 			$(CXX) $(CXXFLAGS) -DINT_BITS=$$bits -o $(TARGET_COMPILE) $(SRC_COMPILE); \
-			$(RUN) sh -c "./$(TARGET_COMPILE) $(BENCH_1) > out.cpp && $(CLANGXX_OUT) out.cpp -o out_cpp"; \
-			echo "=== C++ backend ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_1_ARGS)"; \
-			$(RUN) sh -c "./$(TARGET_COMPILE) --llvm $(BENCH_1) > out.ll"; \
-			echo "=== LLVM backend ===" && $(RUN) sh -c "$(CLANG_LL) out.ll -o out && time ./out $(BENCH_1_ARGS)"; \
-			echo "=== C++ interpreter ===" && $(RUN) sh -c "time ./$(TARGET) $(BENCH_1) $(BENCH_1_ARGS)"; \
+			$(RUN) sh -c "./$(TARGET_COMPILE) examples/factorial.e1 > out.cpp && $(CLANGXX_OUT) out.cpp -o out_cpp"; \
+			echo "=== C++ backend ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_ARGS)"; \
+			$(RUN) sh -c "./$(TARGET_COMPILE) --llvm examples/factorial.e1 > out.ll"; \
+			echo "=== LLVM backend ===" && $(RUN) sh -c "$(CLANG_LL) out.ll -o out && time ./out $(BENCH_ARGS)"; \
+			echo "=== C++ interpreter ===" && $(RUN) sh -c "time ./$(TARGET) examples/factorial.e1 $(BENCH_ARGS)"; \
 		fi; \
 	done
 
