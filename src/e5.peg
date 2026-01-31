@@ -30,7 +30,7 @@ block           = "{" _ (statement ";"? _)* expression? "}" _
 binding         = ident _ ":" ("=" _ expression)?
                 / lvalue _ ":=" _ expression
 lvalue          = ident accessor+
-accessor        = __ atom / "." _ (int_lit / ident)
+accessor        = hs atom / "." _ (int_lit / ident)
 
 // Unified expression grammar
 expression      = or_expr
@@ -52,7 +52,7 @@ product         = unary (("*" / "/" / "%") _ unary)*
 unary           = "-"? apply_expr
 
 // Application: juxtaposition or dot
-apply_expr      = atom (__ atom / "." _ (int_lit / ident))*
+apply_expr      = atom (hs atom / "." _ (int_lit / ident))*
 tuple_items     = expression ("," _ expression)* ("," _)?
 array_items     = (expression ";" _)+
 

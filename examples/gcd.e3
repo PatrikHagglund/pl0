@@ -1,0 +1,20 @@
+// Euclidean algorithm (GCD) in e3
+// Usage: ./e3peg examples/gcd.e3 <a> <b>
+
+a := arg1
+b := arg2
+
+loop {
+  case {
+    a == 0 -> { break }
+    b == 0 -> { break }
+    a == b -> { break }
+    a > b  -> { a := a - b }
+    true   -> { b := b - a }
+  }
+}
+
+case {
+  a == 0 -> { print b }
+  true   -> { print a }
+}

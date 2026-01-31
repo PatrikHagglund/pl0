@@ -236,7 +236,7 @@ pub fun main()
   val arg1-val = match args { Cons(_, Cons(n, _)) -> n.parse-int.default(0); _ -> 0 }
   val arg2-val = match args { Cons(_, Cons(_, Cons(n, _))) -> n.parse-int.default(0); _ -> 0 }
 
-  val g = parse-peg(read-text-file("src/e3eval.peg".path))
+  val g = parse-peg(read-text-file("src/e3.peg".path))
   val prog = read-text-file(prog-path.path)
   println("e3: " ++ prog-path ++ " (" ++ prog.count.int/show ++ " chars)")
 

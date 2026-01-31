@@ -33,7 +33,7 @@ block           = "{" _ (statement ";"? _)* expression? "}" _
 binding         = ident _ ":" _ type_expr? ("=" _ expression)?
                 / lvalue _ ":=" _ expression
 lvalue          = ident accessor+
-accessor        = __ atom / "." _ (int_lit / ident)
+accessor        = hs atom / "." _ (int_lit / ident)
 
 // Type Expressions
 type_expr       = func_type / array_type / record_type / basic_type / ident
@@ -63,7 +63,7 @@ product         = unary (("*" / "/" / "%") _ unary)*
 unary           = "-"? apply_expr
 
 // Application: juxtaposition or dot
-apply_expr      = atom (__ atom / "." _ (int_lit / ident))*
+apply_expr      = atom (hs atom / "." _ (int_lit / ident))*
 tuple_items     = expression ("," _ expression)* ("," _)?
 array_items     = (expression ";" _)+
 

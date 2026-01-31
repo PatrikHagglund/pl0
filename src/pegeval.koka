@@ -34,9 +34,13 @@ pub type semval<x>
   SVList(vs: list<semval<x>>)
   SVExt(ext: x)
 
+// Flatten nested SVList wrappers (2 levels needed for grammar rules like
+// `(statement ";"? _)*` which nest: repetition wraps group wraps elements).
+// Fixed iterations avoid stack overflow that recursive flattening causes.
+// If deeper grammar nesting is added, increase iterations - insufficient
+// flattening causes pattern match failures (statements not recognized).
 pub fun flatten-sv(vs: list<semval<x>>): list<semval<x>>
   vs.flatmap(fn(c) match c { SVList(inner) -> inner; _ -> [c] })
-    .flatmap(fn(c) match c { SVList(inner) -> inner; _ -> [c] })
     .flatmap(fn(c) match c { SVList(inner) -> inner; _ -> [c] })
 
 // Base constructor handling - call from your action handler

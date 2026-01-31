@@ -14,7 +14,7 @@ The "e" in e0–e6 may stand for "experiment" or "exploration".
 **Current state:**
 - e1 has a [language specification](docs/E1_SPEC.md), two Koka interpreters (AST-based and PEG), a C++ interpreter, and a C++ compiler (with C++ and LLVM IR backends)
 - e0, e2, and e3 have PEG interpreters in Koka
-- e3 has known limitations: no nested loop break, no recursive closures
+- e3 has a known limitation: no recursive closures
 - Benchmarks for levels 1, 2, and 3
 - e4 through e6 have PEG grammars and example files, but no interpreters yet
 - For each level, example code shows how to emulate higher-level features with lower-level primitives
@@ -73,6 +73,9 @@ Each level is a strict superset of the previous.
 - [factorial.e2](examples/factorial.e2) — Factorial benchmark (e2)
 - [collatz.e2](examples/collatz.e2) — Collatz sequence (e2)
 - [gcd.e2](examples/gcd.e2) — Euclidean algorithm (e2)
+- [factorial.e3](examples/factorial.e3) — Factorial benchmark (e3)
+- [collatz.e3](examples/collatz.e3) — Collatz sequence (e3)
+- [gcd.e3](examples/gcd.e3) — Euclidean algorithm (e3)
 
 ## Implementations
 
@@ -81,7 +84,7 @@ Each level is a strict superset of the previous.
 | Koka (hand-written parser) | `e1.koka` | AST used|
 | Koka (PEG meta-interpreter) | `peg.koka`, `e1peg.koka` | Single-phase parse+execute, no AST |
 | Koka (PEG, e2) | `peg.koka`, `e2peg.koka` | e2 with case/comparisons/mul-div |
-| Koka (PEG, e3) | `peg.koka`, `e3peg.koka` | e3 with booleans/closures (limited) |
+| Koka (PEG, e3) | `peg.koka`, `e3peg.koka` | e3 with booleans/closures |
 | C++ interpreter | `e1.cpp`, `e1.hpp` | Handwritten, AST used |
 | Compiler in C++ | `e1_compile.cpp`, `e1.hpp` | C++ or LLVM IR backend |
 
@@ -100,10 +103,10 @@ Example results for `2000 31` (with bigint, INT_BITS=0):
 |----------------|------|
 | LLVM backend | 2ms |
 | C++ backend | 17ms |
-| LLVM lli (JIT) | 93ms |
-| C++ interpreter | 0.60s |
+| LLVM lli (JIT) | 106ms |
+| C++ interpreter | 0.58s |
 | Koka PEG e2 | 1.1s |
-| Koka PEG e3 | 1.7s |
+| Koka PEG e3 | 1.2s |
 | Koka interpreter | 2.1s |
 | Koka PEG e1 | 2.5s |
 

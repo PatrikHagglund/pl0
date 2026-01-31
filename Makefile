@@ -154,8 +154,16 @@ bench-intbits: $(IMAGE_DEPS)
 		fi; \
 	done
 
-src/e1peg: src/e1peg.koka src/peg.koka src/pegeval.koka $(IMAGE_DEPS)
+# Koka PEG module - compiled explicitly to avoid stale cache issues.
+# Koka's incremental compilation cache (.koka/) sometimes fails to invalidate
+# when dependencies change, causing incorrect behavior. Compiling peg.koka
+# explicitly before dependent modules ensures fresh artifacts.
+# See docs/KOKA_CACHE_ISSUE.md for details.
+.PHONY: koka-peg
+koka-peg: $(IMAGE_DEPS)
 	$(KOKA) $(KOKA_OPT) --compile src/peg.koka 2>/dev/null
+
+src/e1peg: koka-peg src/e1peg.koka src/peg.koka src/pegeval.koka $(IMAGE_DEPS)
 	$(KOKA) $(KOKA_OPT) --compile src/pegeval.koka 2>/dev/null
 	$(KOKA) $(KOKA_OPT) -o src/e1peg src/e1peg.koka 2>/dev/null
 	chmod +x src/e1peg
@@ -179,14 +187,12 @@ koka-peg-e2: $(IMAGE_DEPS)
 koka-peg-e3: $(IMAGE_DEPS)
 	$(RUN) sh -c "koka --compile src/peg.koka && koka -e src/e3peg.koka -- examples/example.e3"
 
-src/e2peg: src/e2peg.koka src/peg.koka src/pegeval.koka $(IMAGE_DEPS)
-	$(KOKA) $(KOKA_OPT) --compile src/peg.koka 2>/dev/null
+src/e2peg: koka-peg src/e2peg.koka src/peg.koka src/pegeval.koka $(IMAGE_DEPS)
 	$(KOKA) $(KOKA_OPT) --compile src/pegeval.koka 2>/dev/null
 	$(KOKA) $(KOKA_OPT) -o src/e2peg src/e2peg.koka 2>/dev/null
 	chmod +x src/e2peg
 
-src/e3peg: src/e3peg.koka src/peg.koka $(IMAGE_DEPS)
-	$(KOKA) $(KOKA_OPT) --compile src/peg.koka 2>/dev/null
+src/e3peg: koka-peg src/e3peg.koka src/peg.koka $(IMAGE_DEPS)
 	$(KOKA) $(KOKA_OPT) -o src/e3peg src/e3peg.koka 2>/dev/null
 	chmod +x src/e3peg
 

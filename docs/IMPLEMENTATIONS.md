@@ -48,11 +48,9 @@ make koka-peg-e3
 ```
 
 **Known limitations:**
-- Nested loop `break` bug: `break` in an inner loop also exits outer loops (effect handler escapes)
 - No recursive closures: closures capture the environment at definition time, so self-references fail
 
 **Future work:**
-- Fix nested break by using a unique effect tag per loop, or switch to explicit continuation-passing
 - Support recursion via late-binding or Y-combinator
 - Consider requiring explicit grouping for inline actions in PEG grammars (see `ACTION_SCOPE_RECOMMENDATION.md` in parent directory)
 
@@ -227,14 +225,14 @@ Results for `2000 31` (bigint):
 |----------------|------|
 | LLVM backend | 2ms |
 | C++ backend | 17ms |
-| LLVM JIT | 93ms |
-| C++ interpreter | 0.60s |
+| LLVM JIT | 106ms |
+| C++ interpreter | 0.58s |
 | Koka PEG e2 | 1.1s |
-| Koka PEG e3 | 1.7s |
+| Koka PEG e3 | 1.2s |
 | Koka interpreter | 2.1s |
 | Koka PEG e1 | 2.5s |
 
-The e2 PEG interpreter is ~2× faster than e1 PEG for factorial because e2 has native multiplication while e1 must emulate it with nested loops. The e3 interpreter is slower than e2 due to closure/boolean support overhead.
+The e2 PEG interpreter is ~2× faster than e1 PEG for factorial because e2 has native multiplication while e1 must emulate it with nested loops. The e3 interpreter has similar performance to e2.
 
 ## Code Style
 

@@ -1,68 +1,66 @@
-// PL/0 Grammar (PEG variant)
-//
-// Three types with their algebraic operations:
-//   ℤ (integers)  — Euclidean domain: + - * / %
-//   𝔹 (booleans)  — Boolean algebra: && || !
-//   () → T (callables) — application via juxtaposition
-//
-// Type bridge: relational operators ℤ × ℤ → 𝔹
+// PL/0 Level 3 Grammar
+// Adds: booleans, callables (closures), case expressions, function application
 
-// Program structure
-program         = _ top_level_stmt*
-top_level_stmt  = binding / expression
+program         = _ statement*
+statement       = binding / case_stmt / loop_stmt / break_stmt / print_stmt / block / expression
 
-// Statements
-statement       = control / print_stmt / top_level_stmt
-control         = case_stmt / loop_stmt / "break" _
-block           = "{" _ (statement ";"? _)* expression? "}" _
-case_stmt       = "case" _ "{" _ stmt_arm+ "}" _
-stmt_arm        = or_expr "->" _ statement
-loop_stmt       = "loop" _ statement
-print_stmt      = "print" _ expression
+block           = "{" _ (statement ";"? _)* "}" _ { Block }
+loop_stmt       = "loop" _ body:statement { Loop($body) }
+break_stmt      = "break" _ { Break }
+print_stmt      = "print" _ e:expression { Print($e) }
+case_stmt       = "case" _ "{" _ stmt_arm+ "}" _ { CaseStmt }
+stmt_arm        = cond:or_expr "->" _ body:statement { StmtArm($cond, $body) }
 
-// Bindings
-binding         = ident _ ":" ("=" _ expression)?
-                / lvalue _ ":=" _ expression
-lvalue          = ident (__ atom)+
+binding         = id:ident _ ":=" _ e:expression { Assign($id, $e) }
+                / id:ident _ ":" { Decl($id) }
 
-// Unified expression grammar
-expression      = or_expr
-case_expr       = "case" _ "{" _ expr_arm+ "}" _
-expr_arm        = or_expr "->" _ or_expr ("," _)?
+expression      = case_expr / or_expr
+case_expr       = "case" _ "{" _ expr_arm+ "}" _ { CaseExpr }
+expr_arm        = cond:or_expr "->" _ val:or_expr ","? _ { ExprArm($cond, $val) }
 
-// 𝔹 operations
-or_expr         = and_expr ("||" _ and_expr)*
-and_expr        = not_expr ("&&" _ not_expr)*
-not_expr        = ("!" _)? cmp_expr
+or_expr         = l:and_expr "||" _ r:or_expr { Or($l, $r) }
+                / and_expr
+and_expr        = l:not_expr "&&" _ r:and_expr { And($l, $r) }
+                / not_expr
+not_expr        = "!" _ e:cmp_expr { Not($e) }
+                / cmp_expr
 
-// Type bridge
-cmp_expr        = sum_expr (relop sum_expr)?
-relop           = ("==" / "!=" / "<=" / ">=" / "<" / ">") _
+cmp_expr        = l:sum_expr "==" _ r:sum_expr { Eq($l, $r) }
+                / l:sum_expr "!=" _ r:sum_expr { Ne($l, $r) }
+                / l:sum_expr "<=" _ r:sum_expr { Le($l, $r) }
+                / l:sum_expr ">=" _ r:sum_expr { Ge($l, $r) }
+                / l:sum_expr "<" _ r:sum_expr { Lt($l, $r) }
+                / l:sum_expr ">" _ r:sum_expr { Gt($l, $r) }
+                / sum_expr
 
-// ℤ operations
-sum_expr        = product (("+" / "-") _ product)*
-product         = unary (("*" / "/" / "%") _ unary)*
-unary           = "-"? apply_expr
+sum_expr        = l:product "+" _ r:sum_expr { Add($l, $r) }
+                / l:product "-" _ r:sum_expr { Sub($l, $r) }
+                / product
+product         = l:unary "*" _ r:product { Mul($l, $r) }
+                / l:unary "/" _ r:product { Div($l, $r) }
+                / l:unary "%" _ r:product { Mod($l, $r) }
+                / unary
+unary           = "-" _ e:apply_expr { Neg($e) }
+                / apply_expr
 
-// Application via juxtaposition: f x, arr i
-apply_expr      = atom (__ atom)*
-atom            = literal / ident / "(" _ expression ")" _ / block / case_expr
+apply_expr      = atom (__ atom)* _
+atom            = int_lit / bool_lit / func_lit
+                / id:ident { Var($id) }
+                / "(" _ e:expression ")" { $e }
+                / block
 
-// Literals
-literal         = int_lit / bool_lit / func_lit
-int_lit         = digit+ _
-bool_lit        = ("true" / "false") !alnum _
-func_lit        = "(" _ params? ")" _ "->" _ expression
-params          = ident ("," _ ident)* ("," _)?
+int_lit         = digit+ { Int($0) }
+bool_lit        = "true" !idchar { True }
+                / "false" !idchar { False }
+func_lit        = "(" _ p:params? ")" _ "->" _ body:expression { Func($p, $body) }
+params          = ident _ ("," _ ident _)* ","? _ { Params }
 
-// Lexical elements
 keyword         = ("case" / "loop" / "break" / "true" / "false" / "print") !idchar
-ident           = !keyword letter idchar* _
+ident           = !keyword letter idchar* { Ident($0) }
 idchar          = [a-zA-Z0-9_]
 letter          = [a-zA-Z]
 digit           = [0-9]
 
-// Whitespace and comments
 _               = ([ \t\n\r] / comment)*
-__              = [ \t]+                    // required horizontal space for juxtaposition
+__              = [ \t]+
 comment         = "//" [^\n]* / "/*" (!"*/" .)* "*/"
