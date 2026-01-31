@@ -108,7 +108,7 @@ BENCH_ITERS = 2000
 BENCH_N = 31
 BENCH_ARGS = $(BENCH_ITERS) $(BENCH_N)
 
-bench: $(TARGET) $(TARGET_COMPILE) src/e1_rt_bigint.ll src/e1peg src/e1 src/e2peg
+bench: $(TARGET) $(TARGET_COMPILE) src/e1_rt_bigint.ll src/e1peg src/e1 src/e2peg src/e3peg
 	@$(RUN) sh -c "./$(TARGET_COMPILE) examples/factorial.e1 > out.cpp && $(CLANGXX_OUT) out.cpp -o out_cpp"
 	@echo "=== C++ backend ===" && $(RUN) sh -c "time ./out_cpp $(BENCH_ARGS)"
 	@$(RUN) sh -c "./$(TARGET_COMPILE) --llvm examples/factorial.e1 > /tmp/prog.ll && $(LLVM_LINK)"
@@ -118,6 +118,7 @@ bench: $(TARGET) $(TARGET_COMPILE) src/e1_rt_bigint.ll src/e1peg src/e1 src/e2pe
 	@echo "=== Koka interpreter ===" && $(RUN) sh -c "time ./src/e1 examples/factorial.e1 $(BENCH_ARGS)"
 	@echo "=== Koka PEG e1 ===" && $(RUN) sh -c "time ./src/e1peg examples/factorial.e1 $(BENCH_ARGS)"
 	@echo "=== Koka PEG e2 ===" && $(RUN) sh -c "time ./src/e2peg examples/factorial.e2 $(BENCH_ARGS)"
+	@echo "=== Koka PEG e3 ===" && $(RUN) sh -c "time ./src/e3peg examples/factorial.e3 $(BENCH_ARGS)"
 
 bench-1: bench
 
@@ -183,6 +184,11 @@ src/e2peg: src/e2peg.koka src/peg.koka src/pegeval.koka $(IMAGE_DEPS)
 	$(KOKA) $(KOKA_OPT) --compile src/pegeval.koka 2>/dev/null
 	$(KOKA) $(KOKA_OPT) -o src/e2peg src/e2peg.koka 2>/dev/null
 	chmod +x src/e2peg
+
+src/e3peg: src/e3peg.koka src/peg.koka $(IMAGE_DEPS)
+	$(KOKA) $(KOKA_OPT) --compile src/peg.koka 2>/dev/null
+	$(KOKA) $(KOKA_OPT) -o src/e3peg src/e3peg.koka 2>/dev/null
+	chmod +x src/e3peg
 
 koka-peg-e0: $(IMAGE_DEPS)
 	$(RUN) sh -c "koka --compile src/peg.koka && koka --compile src/pegeval.koka && koka -e src/e0peg.koka -- examples/example.e0"

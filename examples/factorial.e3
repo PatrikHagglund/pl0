@@ -1,0 +1,27 @@
+// Factorial benchmark in e3
+// Usage: ./src/e3peg examples/factorial.e3 <iterations> <n>
+// Single-loop version (e3 interpreter has nested loop break bug)
+
+iterations := arg1
+facn := arg2
+sum := 0
+n := facn
+result := 1
+
+loop {
+  case {
+    iterations == 0 -> break
+    n == 0 -> {
+      sum := sum + result
+      iterations := iterations - 1
+      n := facn
+      result := 1
+    }
+    true -> {
+      result := result * n
+      n := n - 1
+    }
+  }
+}
+
+print sum

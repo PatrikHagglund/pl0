@@ -1,6 +1,6 @@
 # PL/0 Implementations
 
-Interpreters and compilers for e1 and e2.
+Interpreters and compilers for e0–e3.
 
 ## Overview
 
@@ -9,6 +9,7 @@ Interpreters and compilers for e1 and e2.
 | `e1.koka` | Koka | Interpreter | e1 | Koka bigint |
 | `e1peg.koka` | Koka | Interpreter | e1 | Koka bigint |
 | `e2peg.koka` | Koka | Interpreter | e2 | Koka bigint |
+| `e3peg.koka` | Koka | Interpreter | e3 | Koka bigint |
 | `e1.cpp` | C++ | Interpreter | e1 | Configurable |
 | `e1_compile.cpp` | C++ | Compiler | e1 | Configurable |
 
@@ -38,6 +39,22 @@ Extends e1peg with case statements, comparisons, and multiplication/division.
 ```bash
 make koka-peg-e2
 ```
+
+**`e3peg.koka` — Single-Phase (e3):**
+Extends e2 with booleans, closures, and case expressions. Uses a separate interpreter (not `pegeval.koka`) with its own AST types for `rval` (int/bool/closure).
+
+```bash
+make koka-peg-e3
+```
+
+**Known limitations:**
+- Nested loop `break` bug: `break` in an inner loop also exits outer loops (effect handler escapes)
+- No recursive closures: closures capture the environment at definition time, so self-references fail
+
+**Future work:**
+- Fix nested break by using a unique effect tag per loop, or switch to explicit continuation-passing
+- Support recursion via late-binding or Y-combinator
+- Consider requiring explicit grouping for inline actions in PEG grammars (see `ACTION_SCOPE_RECOMMENDATION.md` in parent directory)
 
 **`pegeval.koka` — Shared Runtime:**
 Parameterized `semval<x>` type allows level-specific extensions while sharing:
@@ -191,6 +208,7 @@ src/
   e1.koka          — Koka interpreter (e1)
   e1peg.koka       — Koka PEG interpreter (e1, ~20 lines)
   e2peg.koka       — Koka PEG interpreter (e2, ~50 lines)
+  e3peg.koka       — Koka PEG interpreter (e3, closures/booleans)
   e0peg.koka       — Koka PEG interpreter (e0, ~20 lines)
   pegeval.koka     — Shared PEG interpreter runtime
   peg.koka         — Generic PEG parser
@@ -207,15 +225,16 @@ Results for `2000 31` (bigint):
 
 | Implementation | Time |
 |----------------|------|
+| LLVM backend | 2ms |
 | C++ backend | 17ms |
-| LLVM backend | 3ms |
-| LLVM JIT | 86ms |
-| C++ interpreter | 0.59s |
+| LLVM JIT | 93ms |
+| C++ interpreter | 0.60s |
 | Koka PEG e2 | 1.1s |
+| Koka PEG e3 | 1.7s |
 | Koka interpreter | 2.1s |
-| Koka PEG e1 | 2.4s |
+| Koka PEG e1 | 2.5s |
 
-The e2 PEG interpreter is ~2× faster than e1 PEG for factorial because e2 has native multiplication while e1 must emulate it with nested loops.
+The e2 PEG interpreter is ~2× faster than e1 PEG for factorial because e2 has native multiplication while e1 must emulate it with nested loops. The e3 interpreter is slower than e2 due to closure/boolean support overhead.
 
 ## Code Style
 
