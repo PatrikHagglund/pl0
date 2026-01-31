@@ -112,15 +112,11 @@ fun peg-suffix(): <parse,div> peg
   peg-ws()
   optional(p) {
     val op = one-of("*+?")
-    val p1 = match op
+    match op
       '*' -> PStar(p)
       '+' -> PPlus(p)
       '?' -> POpt(p)
       _ -> p
-    // Allow inline action after suffix operator
-    match peg-inline-action()
-      Just(act) -> PAction(p1, act)
-      Nothing -> p1
   }
 
 fun peg-prefix(): <parse,div> peg
@@ -676,7 +672,8 @@ fun peg-exec-match(g: grammar, acts: actions<s>, def: action<s>, p: peg, s: psta
       // For inline actions, we need to collect captures from the pattern
       // Match the pattern and collect all captured values
       val (s1, caps, result) = peg-exec-match-with-caps(g, acts, def, p1, s)
-      val txt = s.string.first(s.count - s1.count).string
+      val n = s.count - s1.count
+      val txt = s.string.first(n).string
       // Evaluate inline action with captures and text
       // For bare constructors like { Block }, pass result as single child
       val evaled = match iact

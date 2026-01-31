@@ -53,9 +53,34 @@ Inline actions embed semantic expressions directly in the grammar:
 
 ```peg
 int_lit = digit+ _ { Int($0) }
-ident   = !keyword letter idchar* _ { Ident($0) }
+ident   = !keyword letter idchar* { Ident($0) }
 binding = id:ident ":=" e:expression { Assign($id, $e) }
         / id:ident ":" { Decl($id) }
+```
+
+### Action Scope
+
+**Inline actions apply to the entire preceding sequence in a choice alternative**, not just the immediately preceding element. This differs from suffix operators (`*`, `+`, `?`) which bind tightly to the preceding atom.
+
+Examples:
+```peg
+// { Ident($0) } applies to entire sequence: !keyword letter idchar*
+// $0 captures full matched text, e.g., "foo"
+ident = !keyword letter idchar* { Ident($0) }
+
+// { Add($l, $r) } applies to: l:product "+" _ r:sum_expr
+sum_expr = l:product "+" _ r:sum_expr { Add($l, $r) }
+         / product
+
+// Each alternative has its own action
+binding = id:ident ":=" e:expression { Assign($id, $e) }
+        / id:ident ":" { Decl($id) }
+```
+
+For explicit grouping, use parentheses:
+```peg
+// Action applies only to grouped portion
+rule = prefix (grouped part) { Action } suffix
 ```
 
 ### Inline Expression Language

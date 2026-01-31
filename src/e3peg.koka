@@ -158,6 +158,9 @@ fun e3-action(name: string, txt: string, children: list<semval>, _caps: captures
     "False" -> SVExpr(EVal(VBool(False)))
     "Ident" -> SVIdent(cs.head.default(SVIdent("")).ident-str)
     "Var" -> SVExpr(EVar(cs.head.default(SVIdent("")).ident-str))
+    "Assign" -> match cs
+      Cons(SVIdent(id), Cons(SVExpr(e), _)) -> SVStmt(SAssign(id, e))
+      _ -> SVList(cs)
     "Add" -> binop("+", cs)
     "Sub" -> binop("-", cs)
     "Mul" -> binop("*", cs)
@@ -173,9 +176,6 @@ fun e3-action(name: string, txt: string, children: list<semval>, _caps: captures
     "Or" -> binop("||", cs)
     "Not" -> match cs { Cons(SVExpr(e), _) -> SVExpr(ENot(e)); _ -> SVExpr(EVal(VBool(False))) }
     "Neg" -> match cs { Cons(SVExpr(e), _) -> SVExpr(ENeg(e)); _ -> SVExpr(EVal(VInt(0))) }
-    "Assign" -> match cs
-      Cons(SVIdent(id), Cons(SVExpr(e), _)) -> SVStmt(SAssign(id, e))
-      _ -> SVList(cs)
     "Decl" -> match cs { Cons(SVIdent(id), _) -> SVStmt(SDecl(id)); _ -> SVList(cs) }
     "Print" -> match cs { Cons(SVExpr(e), _) -> SVStmt(SPrint(e)); _ -> SVList(cs) }
     "Loop" -> match cs { Cons(SVStmt(s), _) -> SVStmt(SLoop(s)); _ -> SVList(cs) }
