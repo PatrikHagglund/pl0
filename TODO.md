@@ -2,13 +2,13 @@
 
 ## Next
 
-- lvalue assignment paths (functional update) — DONE in the interpreters +
-  docs; efuzz generation DEFERRED (see last sub-task).
+- lvalue assignment paths (functional update) — DONE across interpreters,
+  docs, and the efuzz generator (the latter re-enabled 2026-07-02 on a fork
+  Koka toolchain; see last sub-task).
   `arr.i := e` etc. desugar to rebinding the base variable to an updated copy
   (value semantics, no aliasing; root must be a variable); see docs/DESIGN.md
   "lvalue Assignment: Functional Update". Shipped across e4/e5/e6 + docs/
-  examples; the fuzzer-generation piece was written, validated, then reverted
-  on build-cost grounds (below).
+  examples + fuzzer generation.
   - [x] e4 array element assignment (`arr.0 := e`, `arr (i) := e`, chained
         `arr.0 (i) := e`); e4.peg `lpath` rule + `SAssignPath`/`update-path`;
         7 e4_test cases; diff_e4 no-regression.
@@ -21,42 +21,39 @@
         field, dynamic index must be int) and requires the addressed
         component's type == RHS type; base keeps its type. 4 well-typed + 5
         static-error e6_test cases; diff_e6 and diff_e6_illtyped no-regression.
-  - [~] efuzz generation: written and validated (generates array/record
-        component assignment with a read-back print; co-eval `fupdate`;
-        `mut-path`; 650 diff seeds across e4/e5/e6 +mutated +ill-typed, 0
-        fails) — then REVERTED (2026-06-22) because it tipped efuzz's Koka
-        compile over the CI build budget (>1 h; was already ~16 min). Reverted
-        efuzz code is in git history at commit `f46cd20`.
+  - [x] efuzz generation: RE-ENABLED (2026-07-02) on a fork Koka toolchain.
+        Generates array/record component assignment with a read-back print;
+        co-eval `fupdate`; `mut-path`; 650 diff seeds across e4/e5/e6 +mutated
+        +ill-typed, 0 fails. (Had been reverted 2026-06-22 — code preserved at
+        f46cd20 — because it tipped efuzz's Koka compile over the CI build
+        budget; now restored verbatim.)
 
-        ROOT CAUSE — two independent Koka optimizer bugs (both root-caused and
-        fixed upstream by a Koka-side session; analysis in
+        ROOT CAUSE was two independent Koka optimizer bugs (both root-caused and
+        fixed by a Koka-side session; analysis in
         ../koka/EFUZZ-COMPILE-EXPLOSION-REPORT.md, SPECIALIZER-LOOP-REPORT.md,
         efuzz-explosion-repro/):
           1. specializer infinite loop at -O1+ on the effect-polymorphic
-             co-evaluator → this is why `src/BUILD.bazel` passes
-             `--fno-specialize`. Fix: koka-lang/koka PR #899.
+             co-evaluator (this is why efuzz used to pass `--fno-specialize`).
+             Fix: koka-lang/koka PR #899.
           2. core simplifier case-of-case rule duplicates ~2^n on `if/elif`
              chains whose guards use `&&`/`||`; the generator is full of these,
-             so one ~75-line fn blows up to ~300k core nodes → ~90 MB / 928k-
+             so one ~75-line fn blew up to ~300k core nodes → ~90 MB / 928k-
              line C. NOT dodged by `--fno-specialize`. Fix: koka-lang/koka
              PR #902. (With both fixes, full efuzz compiles at -O3 in ~60s,
              output identical to -O0.)
 
-        RE-ENABLE (preferred): once #899 AND #902 ship in a Koka release, bump
-        KOKA_VERSION in rules_koka/koka/private/repo.bzl, drop
-        `--fno-specialize` from the efuzz target in src/BUILD.bazel, and
-        cherry-pick/restore the reverted lvalue fuzzer-gen (f46cd20). CI stays
-        hermetic; no source hacks.
+        HOW IT'S ENABLED NOW: the hermetic toolchain points at an unofficial
+        fork build carrying both fixes — koka dev 3.2.7 + #899/#902, tag
+        `v3.2.7-pl0e-efuzz` in PatrikHagglund/koka, built by that repo's
+        .github/workflows/bundle-pl0e.yaml (bundle layout identical to an
+        upstream release). rules_koka/koka/private/repo.bzl fetches it by URL
+        +sha256 (KOKA_VERSION = "3.2.7-pl0e-efuzz"); `--fno-specialize` dropped
+        from the //src:efuzz target. CI stays hermetic; no source hacks.
 
-        FALLBACK (if upstream takes too long — gives fast HERMETIC build on
-        stock 3.2.x): in efuzz.kk, wrap only the *guard-position* `&&`/`||`
-        (the `if/elif ... then` chains in gen-iexpr/gen-bexpr/gen-guard/
-        gen-assign/gen-stmt/gen-pat/gen-one-field/gen-lvalue) in `noinline`
-        helpers `iand(a,b)=if a then b else False` / `ior(a,b)=if a then True
-        else b`, and keep `--fno-specialize` (still needed for bug #1). Do NOT
-        touch the `&&`/`||` that build `FAnd`/`FOr` AST nodes or appear in
-        feval/show/mut — those are fine. (`noinline` is required; iand/ior are
-        eager, safe only because every guard operand here is pure+total.)
+        FOLLOW-UP: once #899 AND #902 ship in an OFFICIAL koka release, revert
+        the toolchain to upstream — bump KOKA_VERSION and restore the
+        koka-lang/koka release URL/sha in repo.bzl (efuzz.kk and BUILD.bazel
+        need no further change).
   - [x] docs/examples: DESIGN.md "lvalue Assignment" section, FUZZING.md e4
         note, README grammar-levels + example list, and lvalue.e4/e5/e6
         example programs (output verified against their inline comments).
@@ -141,14 +138,13 @@
   overlapping-FIRST grammar) asserting rule calls stay linear (<200 vs.
   thousands un-memoized). The action-less tree matcher (peg-parse, test-
   only) keeps its older opt-in *-memo variants, untouched.
-- Koka specializer loop: reported and fixed in ../koka (dev branch, see
-  SPECIALIZER-LOOP-REPORT.md there). Fix verified against pl0e:
-  `bazel build --config=koka-local //src:efuzz` (new NON-HERMETIC local
-  toolchain override, KOKA_LOCAL_PATH in .bazelrc) compiles at -O3 with
-  specialization in ~24s and produces byte-identical fuzz output. Once the
-  fix ships in a release, bump KOKA_VERSION in rules_koka and drop the
-  --fno-specialize workaround from //src:efuzz; consider upstreaming the
-  fix to koka-lang/koka if not already done
+- ~~Koka specializer loop~~ fixed in ../koka (dev branch, see
+  SPECIALIZER-LOOP-REPORT.md there) and now SHIPPED into pl0e's hermetic
+  toolchain via the fork build (see the efuzz sub-task above): KOKA_VERSION
+  bumped to 3.2.7-pl0e-efuzz, `--fno-specialize` dropped from //src:efuzz.
+  `--config=koka-local` (NON-HERMETIC, KOKA_LOCAL_PATH in .bazelrc) remains
+  available for testing future compiler builds. Still open: get #899/#902
+  merged and released upstream, then revert the toolchain to koka-lang/koka.
 - ~~Koka-next compatibility~~ resolved: the issue was the `.koka` file
   extension, not module headers — koka 3.2.3+ resolves imports only as
   `.kk`. All Koka sources renamed to the official `.kk`; hermetic

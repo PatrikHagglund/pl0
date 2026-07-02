@@ -4,7 +4,9 @@
 // with their expected output, for differential testing across implementations.
 //
 // Usage: efuzz [seed] [size] [level] [mutate] [keep]
-//   level:  1..6 (default 1); 5 adds records/field-access/record-patterns
+//   level:  1..6 (default 1); 4+ adds component assignment (functional
+//           update): `a.i := e` (arrays) and `r.f := e` (records, level 5+);
+//           5 adds records/field-access/record-patterns
 //           (int, bool, and nested-record fields; chained access r.f0.f1);
 //           6 adds type annotations (typed bindings/decls, typed lambda
 //           params `\p: int -> ...`) and is well-typed by construction, so
@@ -96,9 +98,19 @@ type fpat
   PArrP(elems: list<fpat>, rest: bool)  // exact (a; b;) or prefix (a; b; _)
   PRecP(fields: list<(string, fpat)>)   // level 5: record pattern {f0: p, ...} (width subtyping)
 
+// lvalue path selector (component assignment, level 4+): array index or field
+type fsel
+  FSIdx(i: int)         // literal array index .i
+  FSDyn(e: fexpr)       // dynamic array index (e)
+  FSFld(name: string)   // record field .name
+
 type fstmt
   FDecl(name: string)
   FAssign(name: string, e: fexpr)
+  // Component assignment `base.path := e` (functional update; level 4 arrays,
+  // level 5+ records). base names a variable; the path addresses an array
+  // element or record field (possibly nested). See docs/DESIGN.md.
+  FAssignPath(name: string, path: list<fsel>, e: fexpr)
   // Typed binding `name : ty = e` (level 6). ty is a type string the
   // generator already knows ("int", "bool", "[int]", "{f0: int, ...}").
   // Runtime-equivalent to FAssign; the annotation is for e6's checker.
@@ -553,6 +565,45 @@ fun gen-params(st: genst, n: int): div (genst, list<string>)
     val (st3, rest) = gen-params(st2, n - 1)
     (st3, Cons(p, rest))
 
+// Component assignment (functional update). Emits the assignment plus a read-
+// back print so the update is observable in the differential output. Array
+// indices range 0..4 (may be oob -> a well-defined no-op, matching reads).
+fun gen-lvalue-arr(st: genst, lvl: int): div (genst, list<fstmt>)
+  val (st2, ma) = pick-avar(st)
+  match ma
+    Just(a) ->
+      val (st3, i) = pick(st2, 5)
+      val (st4, rhs) = gen-iexpr(st3, 2, lvl)
+      (st4, [FAssignPath(a, [FSIdx(i)], rhs), FPrint(FIdxDot(a, i))])
+    Nothing -> gen-assign(st2, lvl)
+
+fun gen-lvalue-rec(st: genst, lvl: int): div (genst, list<fstmt>)
+  val (st2, mr) = pick-rvar(st)
+  match mr
+    Just((r, fts)) ->
+      val ipaths = int-paths(fts)
+      val bpaths = bool-paths(fts)
+      val (st3, coin) = pick(st2, 100)
+      if !ipaths.is-nil && (bpaths.is-nil || coin < 60) then
+        val (st4, k) = pick(st3, ipaths.length)
+        val path = ipaths.drop(k).head.default([])
+        val (st5, rhs) = gen-iexpr(st4, 2, lvl)
+        (st5, [FAssignPath(r, path.map(FSFld), rhs), FPrint(build-access(r, path))])
+      elif !bpaths.is-nil then
+        val (st4, k) = pick(st3, bpaths.length)
+        val path = bpaths.drop(k).head.default([])
+        val (st5, rhs) = gen-bexpr(st4, 2, lvl)
+        (st5, [FAssignPath(r, path.map(FSFld), rhs), FPrint(build-access(r, path))])
+      else gen-assign(st3, lvl)
+    Nothing -> gen-assign(st2, lvl)
+
+fun gen-lvalue(st: genst, lvl: int): div (genst, list<fstmt>)
+  val (st2, coin) = pick(st, 100)
+  val use-rec = lvl >= 5 && !st2.rvars.is-nil && (st2.avars.is-nil || coin < 50)
+  if use-rec then gen-lvalue-rec(st2, lvl)
+  elif !st2.avars.is-nil then gen-lvalue-arr(st2, lvl)
+  else gen-assign(st2, lvl)
+
 fun gen-stmt(st: genst, depth: int, lvl: int): div (genst, list<fstmt>)
   val (st2, r) = pick(st, 100)
   if r < 28 then gen-assign(st2, lvl)
@@ -595,6 +646,8 @@ fun gen-stmt(st: genst, depth: int, lvl: int): div (genst, list<fstmt>)
     val bind = if lvl >= 6 then FTBind(name, rec-type-str(ftypes), FRecLit(fields))
                else FAssign(name, FRecLit(fields))
     (st5.add-rvar(name, ftypes), [bind])
+  elif lvl >= 4 && r < 74 && (!st2.avars.is-nil || (lvl >= 5 && !st2.rvars.is-nil)) then
+    gen-lvalue(st2, lvl)
   elif r < 80 && depth < 2 then
     val saved = st2
     val (st3, counter) = fresh(st2, "c")
@@ -956,6 +1009,29 @@ fun index-arr(e: fenv, a: string, i: int): <div,exn,viol-flag> rv
         RInt(0)
     _ -> throw("efuzz internal error: array expected")
 
+// Functional update of a value along an lvalue path (matches the interpreters):
+// no aliasing; out-of-bounds array assignment is a no-op that records "oob".
+// Programs are well-typed by construction, so shape mismatches are efuzz bugs.
+fun fupdate(e: fenv, v: rv, sels: list<fsel>, newv: rv): <div,exn,viol-flag> rv
+  match sels
+    Nil -> newv
+    Cons(FSFld(fld), rest) -> match v
+      RRec(fields) -> RRec(fields.map(fn(p) if p.fst == fld then (fld, fupdate(e, p.snd, rest, newv)) else p))
+      _ -> throw("efuzz internal error: record expected in assignment")
+    Cons(sel, rest) ->
+      val i = match sel
+        FSIdx(n) -> n
+        FSDyn(ix) -> feval(e, ix).as-int
+        FSFld(_) -> 0  // unreachable: handled above
+      match v
+        RArr(elems) ->
+          if i >= 0 && i < elems.length then
+            RArr(elems.map-indexed(fn(j, x) if j == i then fupdate(e, x, rest, newv) else x))
+          else
+            mark-viol("oob")
+            v
+        _ -> throw("efuzz internal error: array expected in assignment")
+
 // Mirrors e4peg match-pattern: exact length or prefix; returns bindings.
 fun match-pat(p: fpat, v: rv): div maybe<list<(string, rv)>>
   match (p, v)
@@ -1055,6 +1131,10 @@ fun fexec(e: fenv, s: fstmt, out: list<string>, m: int): <div,exn,viol-flag> (fe
     FAssign(x, ex) ->
       val v = feval(e, ex)
       (fset(e, x, v), out, mag(m, v))
+    FAssignPath(x, path, ex) ->
+      val newv = feval(e, ex)  // RHS before the path indices (matches interpreters)
+      val updated = fupdate(e, fget(e, x), path, newv)
+      (fset(e, x, updated), out, mag(m, updated))
     FTBind(x, _, ex) ->  // typed binding: runtime-equivalent to assignment
       val v = feval(e, ex)
       (fset(e, x, v), out, mag(m, v))
@@ -1177,10 +1257,20 @@ fun show-fpat(p: fpat): div string
     PRecP(fields) ->
       "{" ++ fields.map(fn(f) f.fst ++ ": " ++ show-fpat(f.snd)).join(", ") ++ "}"
 
+fun show-sel(s: fsel): div string
+  match s
+    FSIdx(i) -> "." ++ i.show
+    FSDyn(ix) -> " (" ++ show-fexpr(ix) ++ ")"
+    FSFld(f) -> "." ++ f
+
+fun show-path(path: list<fsel>): div string
+  path.map(show-sel).join("")
+
 fun show-fstmt(s: fstmt, ind: string, lvl: int): div list<string>
   match s
     FDecl(x) -> [ind ++ x ++ (if lvl >= 6 then " : int" else ":")]  // e6 has no untyped decl
     FAssign(x, e) -> [ind ++ x ++ " := " ++ show-fexpr(e)]
+    FAssignPath(x, path, e) -> [ind ++ x ++ show-path(path) ++ " := " ++ show-fexpr(e)]
     FTBind(x, ty, e) -> [ind ++ x ++ " : " ++ ty ++ " = " ++ show-fexpr(e)]
     FPrint(e) -> [ind ++ "print " ++ show-fexpr(e)]
     FLoop(c, b, early, body) ->
@@ -1413,6 +1503,10 @@ fun mut-stmt(st: genst, s: fstmt): div (genst, fstmt)
     FAssign(n, e) ->
       val (s2, e2) = mut-expr(st, e)
       (s2, FAssign(n, e2))
+    FAssignPath(n, path, e) ->
+      val (s1, path2) = mut-path(st, path)
+      val (s2, e2) = mut-expr(s1, e)
+      (s2, FAssignPath(n, path2, e2))
     FTBind(n, ty, e) ->
       val (s2, e2) = mut-expr(st, e)
       (s2, FTBind(n, ty, e2))
@@ -1453,6 +1547,19 @@ fun mut-psarms(st: genst, arms: list<(fpat, list<fstmt>)>): div (genst, list<(fp
       val (s1, body2) = mut-stmts(st, body)
       val (s2, r2) = mut-psarms(s1, rest)
       (s2, Cons((p, body2), r2))
+
+// Mutate dynamic-index expressions in an lvalue path (type-preserving int);
+// literal-index and field selectors are unchanged.
+fun mut-path(st: genst, path: list<fsel>): div (genst, list<fsel>)
+  match path
+    Nil -> (st, [])
+    Cons(FSDyn(ix), rest) ->
+      val (s1, ix2) = mut-expr(st, ix)
+      val (s2, r2) = mut-path(s1, rest)
+      (s2, Cons(FSDyn(ix2), r2))
+    Cons(sel, rest) ->
+      val (s2, r2) = mut-path(st, rest)
+      (s2, Cons(sel, r2))
 
 fun mut-stmts(st: genst, ss: list<fstmt>): div (genst, list<fstmt>)
   match ss

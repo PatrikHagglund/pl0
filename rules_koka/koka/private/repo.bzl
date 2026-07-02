@@ -1,11 +1,19 @@
 """Repository rules for Koka toolchain."""
 
-KOKA_VERSION = "3.2.3"
+# Unofficial fork build: koka dev 3.2.7 + two optimizer fixes (specialize
+# infinite loop, upstream PR #899; case-of-case exponential core blow-up,
+# upstream PR #902). These let //src:efuzz compile at -O3 with specialization
+# in ~60s, so the efuzz lvalue generator is re-enabled and --fno-specialize is
+# dropped from //src:efuzz. Built from PatrikHagglund/koka tag v3.2.7-pl0e-efuzz
+# via its .github/workflows/bundle-pl0e.yaml (bundle layout identical to an
+# upstream release). Once #899 AND #902 ship in an official koka release, revert
+# to upstream: bump KOKA_VERSION and restore the koka-lang/koka release URL/sha.
+KOKA_VERSION = "3.2.7-pl0e-efuzz"
 
 KOKA_PLATFORMS = {
     "linux-x64": {
-        "url": "https://github.com/koka-lang/koka/releases/download/v{version}/koka-v{version}-linux-x64.tar.gz",
-        "sha256": "e82a4b497f1f8791ee171d06c45293ba16432e485d645ddd9688bafa6ccde5a5",
+        "url": "https://github.com/PatrikHagglund/koka/releases/download/v3.2.7-pl0e-efuzz/koka-v3.2.7-linux-x64.tar.gz",
+        "sha256": "19c8a662d3d7add71293d75bc610375c105cc55edd8e85ca97154aed06ac10b2",
         "exec_compat": ["@platforms//os:linux", "@platforms//cpu:x86_64"],
     },
 }
