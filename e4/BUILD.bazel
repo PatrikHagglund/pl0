@@ -1,0 +1,100 @@
+load("@rules_koka//koka:defs.bzl", "koka_binary")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+koka_binary(
+    name = "e4peg",
+    main = "e4peg.kk",
+    srcs = ["e4peg.kk"],
+    deps = ["//shared:peg_lib"],
+    data = ["e4.peg"],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(glob(["*.peg", "*.e4"]))
+
+filegroup(
+    name = "e4_examples",
+    srcs = glob(["*.e4"]),
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "e4_test",
+    srcs = ["e4_test.sh"],
+    args = [
+        "$(location :e4peg)",
+        "e4",
+    ],
+    data = [
+        ":e4peg",
+        ":e4.peg",
+        ":e4_examples",
+    ],
+    timeout = "short",
+)
+
+# Differential fuzzing for e4 (e4peg vs expected + enforce oracle):
+#   bazel run //e4:diff_e4 -- <count> <start-seed> <size>
+_DIFF_E4_ARGS = [
+    "$(location //shared:efuzz)",
+    "$(location :e4peg)",
+]
+
+_DIFF_E4_DATA = [
+    "//shared:efuzz",
+    ":e4peg",
+    ":e4.peg",
+]
+
+sh_binary(
+    name = "diff_e4",
+    srcs = ["e4_diff.sh"],
+    args = _DIFF_E4_ARGS,
+    data = _DIFF_E4_DATA,
+)
+
+sh_test(
+    name = "efuzz_e4_smoke",
+    srcs = ["e4_diff.sh"],
+    args = _DIFF_E4_ARGS + [
+        "--",
+        "10",
+        "1",
+        "15",
+    ],
+    data = _DIFF_E4_DATA,
+    timeout = "moderate",
+)
+
+sh_test(
+    name = "efuzz_e4_mut_smoke",
+    srcs = ["e4_diff.sh"],
+    args = _DIFF_E4_ARGS + [
+        "--",
+        "10",
+        "1",
+        "15",
+        "3",
+    ],
+    data = _DIFF_E4_DATA,
+    timeout = "moderate",
+)
+
+# Delta-debugging reducer (see docs/FUZZING.md):
+#   bazel run //e4:reduce_e4 -- <seed> <size> <mutate>
+# Shrinks a failing efuzz program (against e4peg) to a minimal repro.
+sh_binary(
+    name = "reduce_e4",
+    srcs = ["//shared:reduce.sh"],
+    args = [
+        "$(location //shared:efuzz)",
+        "$(location :e4peg)",
+        "4",
+    ],
+    data = [
+        "//shared:efuzz",
+        ":e4peg",
+        ":e4.peg",
+    ],
+)

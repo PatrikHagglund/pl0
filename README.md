@@ -25,14 +25,14 @@ The "e" in e0–e6 may stand for "experiment" or "exploration".
 ```bash
 ./setup.sh        # Install Bazelisk
 
-bazel run //src:e1 -- examples/factorial.e1      # C++ interpreter
-bazel run //src:e1peg -- examples/factorial.e1   # Koka PEG interpreter
-bazel run //examples:factorial_cpp               # C++ backend
-bazel run //examples:factorial_llvm              # LLVM backend
-bazel test //test:all                            # Run tests
+bazel run //e1:e1 -- e1/factorial.e1      # C++ interpreter
+bazel run //e1:e1peg -- e1/factorial.e1   # Koka PEG interpreter
+bazel run //e1:factorial_cpp               # C++ backend
+bazel run //e1:factorial_llvm              # LLVM backend
+bazel test //...                            # Run tests
 bazel run //bench:bench                          # Run benchmarks
-bazel run //fuzz:diff -- -- 100 1 30             # Differential fuzzing (e1)
-bazel run //fuzz:diff_e2 -- -- 100 1 30          # Differential fuzzing (e2: e2peg vs e3peg)
+bazel run //e1:diff -- -- 100 1 30             # Differential fuzzing (e1)
+bazel run //e2:diff_e2 -- -- 100 1 30          # Differential fuzzing (e2: e2peg vs e3peg)
 ```
 
 Uses hermetic LLVM and Koka toolchains. See [docs/BAZEL.md](docs/BAZEL.md) for details.
@@ -53,24 +53,24 @@ Each level is almost a strict superset of the previous — the deliberate deviat
 
 ## Examples
 
-- [example.e0](examples/example.e0) — Sequential computation (e0)
-- [factorial.e1](examples/factorial.e1) — Factorial benchmark (e1)
-- [collatz.e1](examples/collatz.e1) — Collatz sequence iteration (e1)
-- [gcd.e1](examples/gcd.e1) — Euclidean algorithm (e1)
-- [example.e1](examples/example.e1) — Emulating e2 features in e1
-- [factorial.e2](examples/factorial.e2) — Factorial benchmark (e2)
-- [collatz.e2](examples/collatz.e2) — Collatz sequence (e2)
-- [gcd.e2](examples/gcd.e2) — Euclidean algorithm (e2)
-- [factorial.e3](examples/factorial.e3) — Factorial benchmark (e3)
-- [collatz.e3](examples/collatz.e3) — Collatz sequence (e3)
-- [gcd.e3](examples/gcd.e3) — Euclidean algorithm (e3)
-- [example.e4](examples/example.e4) — Arrays and pattern matching (e4)
-- [factorial.e4](examples/factorial.e4) — Factorial benchmark (e4)
-- [collatz.e4](examples/collatz.e4) — Collatz sequence (e4)
-- [gcd.e4](examples/gcd.e4) — Euclidean algorithm with arrays (e4)
-- [lvalue.e4](examples/lvalue.e4) — Array element assignment, functional update (e4)
-- [lvalue.e5](examples/lvalue.e5) — Record field + nested/mixed component assignment (e5)
-- [lvalue.e6](examples/lvalue.e6) — Component assignment, statically type-checked (e6)
+- [example.e0](e0/example.e0) — Sequential computation (e0)
+- [factorial.e1](e1/factorial.e1) — Factorial benchmark (e1)
+- [collatz.e1](e1/collatz.e1) — Collatz sequence iteration (e1)
+- [gcd.e1](e1/gcd.e1) — Euclidean algorithm (e1)
+- [example.e1](e1/example.e1) — Emulating e2 features in e1
+- [factorial.e2](e2/factorial.e2) — Factorial benchmark (e2)
+- [collatz.e2](e2/collatz.e2) — Collatz sequence (e2)
+- [gcd.e2](e2/gcd.e2) — Euclidean algorithm (e2)
+- [factorial.e3](e3/factorial.e3) — Factorial benchmark (e3)
+- [collatz.e3](e3/collatz.e3) — Collatz sequence (e3)
+- [gcd.e3](e3/gcd.e3) — Euclidean algorithm (e3)
+- [example.e4](e4/example.e4) — Arrays and pattern matching (e4)
+- [factorial.e4](e4/factorial.e4) — Factorial benchmark (e4)
+- [collatz.e4](e4/collatz.e4) — Collatz sequence (e4)
+- [gcd.e4](e4/gcd.e4) — Euclidean algorithm with arrays (e4)
+- [lvalue.e4](e4/lvalue.e4) — Array element assignment, functional update (e4)
+- [lvalue.e5](e5/lvalue.e5) — Record field + nested/mixed component assignment (e5)
+- [lvalue.e6](e6/lvalue.e6) — Component assignment, statically type-checked (e6)
 
 ## Implementations
 
@@ -115,5 +115,5 @@ Example results for `2000 31` (with bigint, INT_BITS=0):
 - [docs/PEG_SPEC.md](docs/PEG_SPEC.md) — PEG grammar specification, static analysis (`--warn` flag)
 - [docs/FUZZING.md](docs/FUZZING.md) — `efuzz`, a differential fuzzing tool adapted from llvm-fuzzgen (levels e1-e6; mutator, reducer, e6 type-check oracle)
 - [docs/minimal_turing_languages.md](docs/minimal_turing_languages.md) — Survey of minimal Turing-complete languages (Minsky machines, λ-calculus, etc.)
-- [examples/](examples/) — All example programs for each language level
+- Example programs live in each level directory (`e0/` … `e6/`), listed above
 

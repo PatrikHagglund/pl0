@@ -9,10 +9,10 @@ Backlog and open questions: [TODO.md](TODO.md).
 ## Commands
 
 ```bash
-bazel test //test/... //fuzz/...                 # full test suite
-bazel run //src:e1 -- examples/factorial.e1      # run an interpreter
-bazel run //fuzz:diff -- -- 100 1 30             # differential fuzzing (e1)
-bazel run //fuzz:diff_e2 -- -- 100 1 30          # differential fuzzing (e2)
+bazel test //...                 # full test suite
+bazel run //e1:e1 -- e1/factorial.e1      # run an interpreter
+bazel run //e1:diff -- -- 100 1 30             # differential fuzzing (e1)
+bazel run //e2:diff_e2 -- -- 100 1 30          # differential fuzzing (e2)
 bazel run //bench:bench                          # benchmarks
 ```
 

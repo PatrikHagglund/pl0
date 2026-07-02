@@ -1,0 +1,21 @@
+// Factorial benchmark in e3
+// Usage: ./e3/e3peg e3/factorial.e3 <iterations> <n>
+
+iterations := arg1
+n := arg2
+sum := 0
+
+loop {
+  case { iterations == 0 -> { break } true -> { } }
+  result := 1
+  i := n
+  loop {
+    case { i == 0 -> { break } true -> { } }
+    result := result * i
+    i := i - 1
+  }
+  sum := sum + result
+  iterations := iterations - 1
+}
+
+print sum

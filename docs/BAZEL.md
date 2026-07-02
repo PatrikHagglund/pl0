@@ -7,7 +7,7 @@ This project uses Bazel with fully hermetic toolchains for reproducible builds.
 ```bash
 ./setup.sh                # Install Bazelisk
 bazel build //...         # Build all targets
-bazel test //test:all     # Run tests
+bazel test //...          # Run tests
 bazel run //bench:bench   # Run benchmarks
 ```
 
@@ -37,7 +37,8 @@ The benchmarks use the copy from `toolchains_llvm` since `lli` needs it as an ex
 ### Hermetic Koka Toolchain
 
 Koka interpreters (`koka.bzl`):
-- Downloads Koka v3.2.3 automatically
+- Downloads the Koka toolchain automatically (currently an unofficial fork
+  build, v3.2.7-pl0e-efuzz — see rules_koka/koka/private/repo.bzl)
 - Creates a clang wrapper with hermetic header/library paths
 - Uses hermetic glibc/kernel headers and CRT objects
 - Compiles C code (not C++), so excludes libc++ headers
@@ -46,15 +47,15 @@ Koka interpreters (`koka.bzl`):
 
 ```bash
 # Interpreters
-bazel run //src:e1 -- examples/factorial.e1      # C++ interpreter
-bazel run //src:e1peg -- examples/factorial.e1   # Koka PEG interpreter
+bazel run //e1:e1 -- e1/factorial.e1      # C++ interpreter
+bazel run //e1:e1peg -- e1/factorial.e1   # Koka PEG interpreter
 
 # Compiled examples
-bazel run //examples:factorial_cpp               # C++ backend
-bazel run //examples:factorial_llvm              # LLVM backend
+bazel run //e1:factorial_cpp               # C++ backend
+bazel run //e1:factorial_llvm              # LLVM backend
 
 # Tests and benchmarks
-bazel test //test:all
+bazel test //...
 bazel run //bench:bench                          # Full benchmark suite
 bazel run //bench:llvmjit                        # LLVM JIT only
 ```

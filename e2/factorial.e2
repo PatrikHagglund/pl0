@@ -1,0 +1,29 @@
+// Factorial benchmark in e2
+// Usage: ./e2peg e2/factorial.e2 <iterations> <n>
+
+iterations := arg1
+facn := arg2
+sum := 0
+
+loop {
+  case {
+    iterations == 0 -> break
+    1 -> {
+      n := facn
+      result := 1
+      loop {
+        case {
+          n == 0 -> break
+          1 -> {
+            result := result * n
+            n := n - 1
+          }
+        }
+      }
+      sum := sum + result
+      iterations := iterations - 1
+    }
+  }
+}
+
+print sum

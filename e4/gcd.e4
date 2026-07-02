@@ -1,0 +1,28 @@
+// Euclidean algorithm (GCD) in e4
+// Usage: ./e4peg e4/gcd.e4 <a> <b>
+// Demonstrates: arrays as pairs, pattern matching
+
+state := (arg1; arg2;)
+
+loop {
+  case state {
+    (0; _;)  -> { break }
+    (_; 0;)  -> { break }
+    (a; b;)  -> {
+      case a == b {
+        true -> { break }
+        _    -> {
+          case a > b {
+            true -> { state := (a - b; b;) }
+            _    -> { state := (a; b - a;) }
+          }
+        }
+      }
+    }
+  }
+}
+
+case state {
+  (0; b;) -> { print b }
+  (a; _;) -> { print a }
+}

@@ -1,0 +1,105 @@
+load("@rules_koka//koka:defs.bzl", "koka_binary")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+koka_binary(
+    name = "e6peg",
+    main = "e6peg.kk",
+    srcs = ["e6peg.kk"],
+    deps = ["//shared:peg_lib"],
+    data = ["e6.peg"],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(glob(["*.peg", "*.e6"]))
+
+filegroup(
+    name = "e6_examples",
+    srcs = glob(["*.e6"]),
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "e6_test",
+    srcs = ["e6_test.sh"],
+    args = [
+        "$(location :e6peg)",
+        "e6",
+    ],
+    data = [
+        ":e6peg",
+        ":e6.peg",
+        ":e6_examples",
+    ],
+    timeout = "short",
+)
+
+# Differential fuzzing for e6 (e6peg vs expected + enforce + type-check oracle):
+#   bazel run //e6:diff_e6 -- <count> <start-seed> <size> [mutate]
+_DIFF_E6_ARGS = [
+    "$(location //shared:efuzz)",
+    "$(location :e6peg)",
+]
+
+_DIFF_E6_DATA = [
+    "//shared:efuzz",
+    ":e6peg",
+    ":e6.peg",
+]
+
+sh_binary(
+    name = "diff_e6",
+    srcs = ["e6_diff.sh"],
+    args = _DIFF_E6_ARGS,
+    data = _DIFF_E6_DATA,
+)
+
+sh_test(
+    name = "efuzz_e6_smoke",
+    srcs = ["e6_diff.sh"],
+    args = _DIFF_E6_ARGS + ["--", "10", "1", "15"],
+    data = _DIFF_E6_DATA,
+    timeout = "moderate",
+)
+
+sh_test(
+    name = "efuzz_e6_mut_smoke",
+    srcs = ["e6_diff.sh"],
+    args = _DIFF_E6_ARGS + ["--", "10", "1", "15", "3"],
+    data = _DIFF_E6_DATA,
+    timeout = "moderate",
+)
+
+# Ill-typed fuzzing for e6 (the dual of the type-check oracle): efuzz emits
+# well-typed programs with one injected type error; e6peg must reject each
+# with "Static error".
+#   bazel run //e6:diff_e6_illtyped -- -- <count> <start-seed> <size>
+sh_binary(
+    name = "diff_e6_illtyped",
+    srcs = ["e6_illtyped.sh"],
+    args = _DIFF_E6_ARGS,
+    data = _DIFF_E6_DATA,
+)
+
+sh_test(
+    name = "efuzz_e6_illtyped_smoke",
+    srcs = ["e6_illtyped.sh"],
+    args = _DIFF_E6_ARGS + ["--", "10", "1", "15"],
+    data = _DIFF_E6_DATA,
+    timeout = "moderate",
+)
+
+sh_binary(
+    name = "reduce_e6",
+    srcs = ["//shared:reduce.sh"],
+    args = [
+        "$(location //shared:efuzz)",
+        "$(location :e6peg)",
+        "6",
+    ],
+    data = [
+        "//shared:efuzz",
+        ":e6peg",
+        ":e6.peg",
+    ],
+)

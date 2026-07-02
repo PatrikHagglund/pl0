@@ -2,9 +2,9 @@
 
 # Unofficial fork build: koka dev 3.2.7 + two optimizer fixes (specialize
 # infinite loop, upstream PR #899; case-of-case exponential core blow-up,
-# upstream PR #902). These let //src:efuzz compile at -O3 with specialization
+# upstream PR #902). These let //shared:efuzz compile at -O3 with specialization
 # in ~60s, so the efuzz lvalue generator is re-enabled and --fno-specialize is
-# dropped from //src:efuzz. Built from PatrikHagglund/koka tag v3.2.7-pl0e-efuzz
+# dropped from //shared:efuzz. Built from PatrikHagglund/koka tag v3.2.7-pl0e-efuzz
 # via its .github/workflows/bundle-pl0e.yaml (bundle layout identical to an
 # upstream release). Once #899 AND #902 ship in an official koka release, revert
 # to upstream: bump KOKA_VERSION and restore the koka-lang/koka release URL/sha.

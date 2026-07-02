@@ -1,0 +1,248 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("@rules_koka//koka:defs.bzl", "koka_binary", "koka_library")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//e1:e1.bzl", "e1_cpp_binary", "e1_llvm_binary")
+
+# Koka PEG interpreter
+koka_binary(
+    name = "e1peg",
+    main = "e1peg.kk",
+    srcs = ["e1peg.kk"],
+    deps = [
+        "//shared:peg_lib",
+        "//shared:pegeval_lib",
+    ],
+    data = ["e1.peg"],
+    visibility = ["//visibility:public"],
+)
+
+# Hand-written Koka interpreter (two-phase: parse to AST, then evaluate)
+koka_library(
+    name = "e1_koka_lib",
+    srcs = [
+        "e1-types.kk",
+        "e1-parser.kk",
+        "e1-eval.kk",
+    ],
+)
+
+koka_binary(
+    name = "e1_koka",
+    main = "e1.kk",
+    srcs = ["e1.kk"],
+    deps = [":e1_koka_lib"],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(glob(["*.peg", "*.e1"]))
+
+filegroup(
+    name = "e1_examples",
+    srcs = glob(["*.e1"]),
+    visibility = ["//visibility:public"],
+)
+
+# Default configuration (INT_BITS=0, LIMB_BITS=64 - bigint)
+cc_binary(
+    name = "e1",
+    srcs = ["e1.cpp"],
+    deps = [":e1_hdrs"],
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "e1_compile",
+    srcs = ["e1_compile.cpp"],
+    deps = [":e1_hdrs"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "e1_hdrs",
+    hdrs = [
+        "e1.hpp",
+        "e1_bigint.hpp",
+        "e1_preamble.hpp",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# INT_BITS configurations for benchmarking
+# Bigint with different LIMB_BITS
+[
+    cc_binary(
+        name = "e1_int0_limb" + limb,
+        srcs = ["e1.cpp"],
+        local_defines = ["INT_BITS=0", "LIMB_BITS=" + limb],
+        deps = [":e1_hdrs"],
+        visibility = ["//bench:__pkg__"],
+    )
+    for limb in ["32", "64", "128"]
+]
+
+[
+    cc_binary(
+        name = "e1_compile_int0_limb" + limb,
+        srcs = ["e1_compile.cpp"],
+        local_defines = ["INT_BITS=0", "LIMB_BITS=" + limb],
+        deps = [":e1_hdrs"],
+        visibility = ["//bench:__pkg__"],
+    )
+    for limb in ["32", "64", "128"]
+]
+
+# Fixed-width INT_BITS
+[
+    cc_binary(
+        name = "e1_int" + bits,
+        srcs = ["e1.cpp"],
+        local_defines = ["INT_BITS=" + bits],
+        deps = [":e1_hdrs"],
+        visibility = ["//bench:__pkg__"],
+    )
+    for bits in ["64", "512"]
+]
+
+[
+    cc_binary(
+        name = "e1_compile_int" + bits,
+        srcs = ["e1_compile.cpp"],
+        local_defines = ["INT_BITS=" + bits],
+        deps = [":e1_hdrs"],
+        visibility = ["//bench:__pkg__"],
+    )
+    for bits in ["64", "512"]
+]
+
+# Compile bigint runtime to LLVM IR
+# Uses toolchains_llvm_bootstrapped clang with libc++ headers from the same toolchain
+genrule(
+    name = "e1_rt_bigint_ll",
+    srcs = [
+        "e1_rt_bigint.cpp",
+        "e1_bigint.hpp",
+    ],
+    outs = ["e1_rt_bigint.ll"],
+    cmd = """
+        LIBCXX_HDR=$(execpath @toolchains_llvm_bootstrapped//runtimes/libcxx:libcxx_headers_include_search_directory)
+        LIBCXXABI_HDR=$(execpath @toolchains_llvm_bootstrapped//runtimes/libcxx:libcxxabi_headers_include_search_directory)
+        GLIBC_HDR=$(execpath @toolchains_llvm_bootstrapped//runtimes/glibc:glibc_headers_include_search_directory)
+        KERNEL_HDR=$(execpath @@toolchains_llvm_bootstrapped++kernel_headers+kernel_headers//:kernel_headers_directory)
+        $(execpath @toolchains_llvm_bootstrapped//tools:clang) -x c++ -std=c++26 \
+            -isystem $$LIBCXX_HDR \
+            -isystem $$LIBCXXABI_HDR \
+            -isystem $$GLIBC_HDR \
+            -isystem $$KERNEL_HDR \
+            -Wno-vla-cxx-extension -S -emit-llvm -O3 \
+            $(location e1_rt_bigint.cpp) -o $@
+    """,
+    tools = [
+        "@toolchains_llvm_bootstrapped//tools:clang",
+        "@toolchains_llvm_bootstrapped//runtimes/libcxx:libcxx_headers_include_search_directory",
+        "@toolchains_llvm_bootstrapped//runtimes/libcxx:libcxxabi_headers_include_search_directory",
+        "@toolchains_llvm_bootstrapped//runtimes/glibc:glibc_headers_include_search_directory",
+        "@@toolchains_llvm_bootstrapped++kernel_headers+kernel_headers//:kernel_headers_directory",
+    ],
+    local = True,
+    visibility = ["//visibility:public"],
+)
+
+# C++ backend targets for the e1 example programs
+e1_cpp_binary(name = "factorial_cpp", src = "factorial.e1")
+
+e1_cpp_binary(name = "collatz_cpp", src = "collatz.e1")
+
+e1_cpp_binary(name = "gcd_cpp", src = "gcd.e1")
+
+# LLVM backend targets
+e1_llvm_binary(name = "factorial_llvm", src = "factorial.e1")
+
+e1_llvm_binary(name = "collatz_llvm", src = "collatz.e1")
+
+e1_llvm_binary(name = "gcd_llvm", src = "gcd.e1")
+
+# Interpreter + compiler smoke test (also covers the e0 example)
+sh_test(
+    name = "e1_interp_test",
+    srcs = ["e1_test.sh"],
+    args = [
+        "$(location :e1)",
+        "$(location :e1_compile)",
+        "e0",
+        "e1",
+    ],
+    data = [
+        ":e1",
+        ":e1_compile",
+        ":e1_examples",
+        "//e0:e0_examples",
+    ],
+    timeout = "short",
+)
+
+# Differential fuzzing for e1 (see docs/FUZZING.md):
+#   bazel run //e1:diff -- <count> <start-seed> <size>
+# e2/e3/e4 PEG interpreters are not in the matrix: their grammars lack
+# break_ifz by design (docs/DESIGN.md "Superset deviations"), so they cannot
+# parse e1 programs with loops.
+_DIFF_ARGS = [
+    "$(location //shared:efuzz)",
+    "$(location :e1)",
+    "$(location :e1_koka)",
+    "$(location :e1peg)",
+    "$(location :e1_compile)",
+    "$(location @llvm_tools_llvm//:bin/lli)",
+    "$(location @llvm_tools_llvm//:bin/llvm-link)",
+    "$(location :e1_rt_bigint_ll)",
+    "$(location @llvm_tools_llvm//:lib/clang/21/lib/x86_64-unknown-linux-gnu/libclang_rt.builtins.a)",
+]
+
+_DIFF_DATA = [
+    "//shared:efuzz",
+    ":e1",
+    ":e1_koka",
+    ":e1peg",
+    ":e1_compile",
+    ":e1.peg",
+    ":e1_rt_bigint_ll",
+    "@llvm_tools_llvm//:bin/lli",
+    "@llvm_tools_llvm//:bin/llvm-link",
+    "@llvm_tools_llvm//:lib/clang/21/lib/x86_64-unknown-linux-gnu/libclang_rt.builtins.a",
+]
+
+sh_binary(
+    name = "diff",
+    srcs = ["e1_diff.sh"],
+    args = _DIFF_ARGS,
+    data = _DIFF_DATA,
+)
+
+sh_test(
+    name = "efuzz_smoke",
+    srcs = ["e1_diff.sh"],
+    args = _DIFF_ARGS + [
+        "--",
+        "10",
+        "1",
+        "15",
+    ],
+    data = _DIFF_DATA,
+    timeout = "moderate",
+)
+
+# Same but with the mutator on (4th arg = mutation passes), gating efuzz
+# Phase 4: semantics-preserving mutations must still match the oracle.
+sh_test(
+    name = "efuzz_mut_smoke",
+    srcs = ["e1_diff.sh"],
+    args = _DIFF_ARGS + [
+        "--",
+        "10",
+        "1",
+        "15",
+        "3",
+    ],
+    data = _DIFF_DATA,
+    timeout = "moderate",
+)

@@ -1,0 +1,97 @@
+load("@rules_koka//koka:defs.bzl", "koka_binary")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+koka_binary(
+    name = "e3peg",
+    main = "e3peg.kk",
+    srcs = ["e3peg.kk"],
+    deps = ["//shared:peg_lib"],
+    data = ["e3.peg"],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(glob(["*.peg", "*.e3"]))
+
+filegroup(
+    name = "e3_examples",
+    srcs = glob(["*.e3"]),
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "e3_test",
+    srcs = ["e3_test.sh"],
+    args = [
+        "$(location :e3peg)",
+        "e3",
+    ],
+    data = [
+        ":e3peg",
+        ":e3.peg",
+        ":e3_examples",
+    ],
+    timeout = "short",
+)
+
+# Differential fuzzing for e3 (e3peg vs expected + enforce oracle):
+#   bazel run //e3:diff_e3 -- <count> <start-seed> <size>
+_DIFF_E3_ARGS = [
+    "$(location //shared:efuzz)",
+    "$(location :e3peg)",
+]
+
+_DIFF_E3_DATA = [
+    "//shared:efuzz",
+    ":e3peg",
+    ":e3.peg",
+]
+
+sh_binary(
+    name = "diff_e3",
+    srcs = ["e3_diff.sh"],
+    args = _DIFF_E3_ARGS,
+    data = _DIFF_E3_DATA,
+)
+
+sh_test(
+    name = "efuzz_e3_smoke",
+    srcs = ["e3_diff.sh"],
+    args = _DIFF_E3_ARGS + [
+        "--",
+        "10",
+        "1",
+        "15",
+    ],
+    data = _DIFF_E3_DATA,
+    timeout = "moderate",
+)
+
+sh_test(
+    name = "efuzz_e3_mut_smoke",
+    srcs = ["e3_diff.sh"],
+    args = _DIFF_E3_ARGS + [
+        "--",
+        "10",
+        "1",
+        "15",
+        "3",
+    ],
+    data = _DIFF_E3_DATA,
+    timeout = "moderate",
+)
+
+sh_binary(
+    name = "reduce_e3",
+    srcs = ["//shared:reduce.sh"],
+    args = [
+        "$(location //shared:efuzz)",
+        "$(location :e3peg)",
+        "3",
+    ],
+    data = [
+        "//shared:efuzz",
+        ":e3peg",
+        ":e3.peg",
+    ],
+)

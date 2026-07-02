@@ -1,0 +1,21 @@
+load("@rules_koka//koka:defs.bzl", "koka_binary")
+
+koka_binary(
+    name = "e0peg",
+    main = "e0peg.kk",
+    srcs = ["e0peg.kk"],
+    deps = [
+        "//shared:peg_lib",
+        "//shared:pegeval_lib",
+    ],
+    data = ["e0.peg"],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(glob(["*.peg"]))
+
+filegroup(
+    name = "e0_examples",
+    srcs = glob(["*.e0"]),
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,73 @@
+load("@rules_koka//koka:defs.bzl", "koka_binary")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+koka_binary(
+    name = "e2peg",
+    main = "e2peg.kk",
+    srcs = ["e2peg.kk"],
+    deps = [
+        "//shared:peg_lib",
+        "//shared:pegeval_lib",
+    ],
+    data = ["e2.peg"],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(glob(["*.peg", "*.e2"]))
+
+filegroup(
+    name = "e2_examples",
+    srcs = glob(["*.e2"]),
+    visibility = ["//visibility:public"],
+)
+
+# Differential fuzzing for e2 (e2peg vs e3peg vs expected):
+#   bazel run //e2:diff_e2 -- <count> <start-seed> <size>
+_DIFF_E2_ARGS = [
+    "$(location //shared:efuzz)",
+    "$(location :e2peg)",
+    "$(location //e3:e3peg)",
+]
+
+_DIFF_E2_DATA = [
+    "//shared:efuzz",
+    ":e2peg",
+    "//e3:e3peg",
+    ":e2.peg",
+    "//e3:e3.peg",
+]
+
+sh_binary(
+    name = "diff_e2",
+    srcs = ["e2_diff.sh"],
+    args = _DIFF_E2_ARGS,
+    data = _DIFF_E2_DATA,
+)
+
+sh_test(
+    name = "efuzz_e2_smoke",
+    srcs = ["e2_diff.sh"],
+    args = _DIFF_E2_ARGS + [
+        "--",
+        "10",
+        "1",
+        "15",
+    ],
+    data = _DIFF_E2_DATA,
+    timeout = "moderate",
+)
+
+sh_test(
+    name = "efuzz_e2_mut_smoke",
+    srcs = ["e2_diff.sh"],
+    args = _DIFF_E2_ARGS + [
+        "--",
+        "10",
+        "1",
+        "15",
+        "3",
+    ],
+    data = _DIFF_E2_DATA,
+    timeout = "moderate",
+)

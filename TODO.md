@@ -48,7 +48,7 @@
         .github/workflows/bundle-pl0e.yaml (bundle layout identical to an
         upstream release). rules_koka/koka/private/repo.bzl fetches it by URL
         +sha256 (KOKA_VERSION = "3.2.7-pl0e-efuzz"); `--fno-specialize` dropped
-        from the //src:efuzz target. CI stays hermetic; no source hacks.
+        from the //shared:efuzz target. CI stays hermetic; no source hacks.
 
         FOLLOW-UP: once #899 AND #902 ship in an OFFICIAL koka release, revert
         the toolchain to upstream — bump KOKA_VERSION and restore the
@@ -58,14 +58,14 @@
         note, README grammar-levels + example list, and lvalue.e4/e5/e6
         example programs (output verified against their inline comments).
 - ~~efuzz e6 oracle: well-typed-by-construction programs must pass e6peg's
-  static checker~~ DONE (2026-06-15): //fuzz:diff_e6 fails on any
+  static checker~~ DONE (2026-06-15): //e6:diff_e6 fails on any
   "Static error". Found+fixed two generator/checker discrepancies
   (int-pattern-vs-array scrutinee; mixed int+bool case arms). 300 seeds
   (pure+mutated), 0 fails, 0 static-errors.
 - ~~efuzz e6 ill-typed mutator (the dual oracle)~~ DONE (2026-06-20):
   `efuzz ... 6 -1` emits a well-typed program with one injected type
   error (marked "// expect-static-error: yes"); e6peg must reject it with
-  "Static error". //fuzz:diff_e6_illtyped + smoke + rolling CI step. Two
+  "Static error". //e6:diff_e6_illtyped + smoke + rolling CI step. Two
   strategies (retype an existing binding; or inject a poison print with an
   ill-typed argument), ~10 distinct checker messages, negative control
   verified. 100 seeds, 0 fails.
@@ -107,7 +107,7 @@
 - ~~efuzz Phase 3c: extend the generator to e5~~ DONE (2026-06-14):
   records (int-field literals, field access, record pattern-cases with
   width subtyping), RRec in the co-evaluator, mutator+reducer support,
-  //fuzz:diff_e5 + smokes + reduce_e5 + CI rolling. 300 seeds, 0 fails.
+  //e5:diff_e5 + smokes + reduce_e5 + CI rolling. 300 seeds, 0 fails.
   Follow-up: done — bool + nested record fields both landed 2026-06-21
   (see the two DONE items above).
 - ~~efuzz e6: extend the generator to e6 (typed bindings, type decls)~~
@@ -117,7 +117,7 @@
 - ~~efuzz Phase 4 mutator~~ DONE (2026-06-14): semantics+type-preserving
   rewrites, self-validating, level-safe. `efuzz ... [mutate]` + drivers'
   4th MUTATE arg; pure+mutated smokes gated, rolling CI campaigns mutated.
-- ~~efuzz Phase 4 reducer~~ DONE (2026-06-14): //fuzz:reduce_e4 /
+- ~~efuzz Phase 4 reducer~~ DONE (2026-06-14): //e4:reduce_e4 /
   reduce_e3. efuzz 5th `keep` mask arg keeps a subset of body statements
   and re-co-evaluates (oracle stays correct); reduce.sh greedily drops
   statements while the failure persists. Self-tested via REDUCE_GREP
@@ -141,7 +141,7 @@
 - ~~Koka specializer loop~~ fixed in ../koka (dev branch, see
   SPECIALIZER-LOOP-REPORT.md there) and now SHIPPED into pl0e's hermetic
   toolchain via the fork build (see the efuzz sub-task above): KOKA_VERSION
-  bumped to 3.2.7-pl0e-efuzz, `--fno-specialize` dropped from //src:efuzz.
+  bumped to 3.2.7-pl0e-efuzz, `--fno-specialize` dropped from //shared:efuzz.
   `--config=koka-local` (NON-HERMETIC, KOKA_LOCAL_PATH in .bazelrc) remains
   available for testing future compiler builds. Still open: get #899/#902
   merged and released upstream, then revert the toolchain to koka-lang/koka.
@@ -155,7 +155,12 @@
   Interpreter rebuild ~3min -> ~1m7s once its library is cached.
   (Investigated stdlib-only reuse first; too small — ~8%/target — and
   reverted, since the per-dependent library recompile was the real cost.)
-- Restructure directories by language level (e0/, e1/, ... + shared/)
+- ~~Restructure directories by language level~~ DONE (2026-07-02): each
+  level directory (e0/ … e6/) holds its sources, grammar(s), tests, fuzz
+  driver, and example programs; shared/ holds the PEG engine (peg.kk,
+  pegeval.kk), efuzz, reduce.sh, and the PEG tests. Target names are
+  unchanged, only packages moved (//src:e4peg → //e4:e4peg, //fuzz:diff_e4
+  → //e4:diff_e4, //src:efuzz → //shared:efuzz).
 - rules_cc pinned at 0.2.16 (latest compatible): 0.2.17+ removed targets
   toolchains_llvm_bootstrapped 0.5.9 still references. Bump it when the
   bootstrapped toolchain bumps its own rules_cc dependency.

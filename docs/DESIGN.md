@@ -24,7 +24,7 @@ differential-fuzzing work, see [FUZZING.md](FUZZING.md)):
 | e3 → e4 | `case` requires a scrutinee | e4's pattern matching needs `case expr { pattern -> ... }`; the guard form `case { cond -> ... }` no longer parses |
 
 Consequences:
-- e1 programs that use loops do not parse at level 2+ (e.g. `examples/factorial.e1`).
+- e1 programs that use loops do not parse at level 2+ (e.g. `e1/factorial.e1`).
 - e2 → e3 is a *syntactic* superset (all e2 examples parse and run on e3peg)
   but not a *semantic* one: an e2 program that uses a comparison result as an
   integer (`x := (a < b)`, `print (a < b)`, arithmetic on it) behaves

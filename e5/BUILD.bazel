@@ -1,0 +1,86 @@
+load("@rules_koka//koka:defs.bzl", "koka_binary")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+koka_binary(
+    name = "e5peg",
+    main = "e5peg.kk",
+    srcs = ["e5peg.kk"],
+    deps = ["//shared:peg_lib"],
+    data = ["e5.peg"],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(glob(["*.peg", "*.e5"]))
+
+filegroup(
+    name = "e5_examples",
+    srcs = glob(["*.e5"]),
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "e5_test",
+    srcs = ["e5_test.sh"],
+    args = [
+        "$(location :e5peg)",
+        "e5",
+    ],
+    data = [
+        ":e5peg",
+        ":e5.peg",
+        ":e5_examples",
+    ],
+    timeout = "short",
+)
+
+# Differential fuzzing for e5 (e5peg vs expected + enforce oracle):
+#   bazel run //e5:diff_e5 -- <count> <start-seed> <size> [mutate]
+_DIFF_E5_ARGS = [
+    "$(location //shared:efuzz)",
+    "$(location :e5peg)",
+]
+
+_DIFF_E5_DATA = [
+    "//shared:efuzz",
+    ":e5peg",
+    ":e5.peg",
+]
+
+sh_binary(
+    name = "diff_e5",
+    srcs = ["e5_diff.sh"],
+    args = _DIFF_E5_ARGS,
+    data = _DIFF_E5_DATA,
+)
+
+sh_test(
+    name = "efuzz_e5_smoke",
+    srcs = ["e5_diff.sh"],
+    args = _DIFF_E5_ARGS + ["--", "10", "1", "15"],
+    data = _DIFF_E5_DATA,
+    timeout = "moderate",
+)
+
+sh_test(
+    name = "efuzz_e5_mut_smoke",
+    srcs = ["e5_diff.sh"],
+    args = _DIFF_E5_ARGS + ["--", "10", "1", "15", "3"],
+    data = _DIFF_E5_DATA,
+    timeout = "moderate",
+)
+
+sh_binary(
+    name = "reduce_e5",
+    srcs = ["//shared:reduce.sh"],
+    args = [
+        "$(location //shared:efuzz)",
+        "$(location :e5peg)",
+        "5",
+    ],
+    data = [
+        "//shared:efuzz",
+        ":e5peg",
+        ":e5.peg",
+    ],
+)

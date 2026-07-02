@@ -1,0 +1,46 @@
+load("@rules_koka//koka:defs.bzl", "koka_binary", "koka_library")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+# PEG engine (grammar parser + memoizing action-executing evaluator), shared
+# by all eN PEG interpreters.
+koka_library(
+    name = "peg_lib",
+    srcs = ["peg.kk"],
+    visibility = ["//visibility:public"],
+)
+
+koka_library(
+    name = "pegeval_lib",
+    srcs = ["pegeval.kk"],
+    deps = [":peg_lib"],
+    visibility = ["//visibility:public"],
+)
+
+# Random e1-e6 program generator for differential fuzzing (docs/FUZZING.md).
+# Compiles at -O3 with specialization on: the fork toolchain (see
+# rules_koka/koka/private/repo.bzl) carries the two optimizer fixes that
+# previously forced --fno-specialize and blocked the lvalue generator.
+koka_binary(
+    name = "efuzz",
+    main = "efuzz.kk",
+    srcs = ["efuzz.kk"],
+    visibility = ["//visibility:public"],
+)
+
+# PEG engine tests
+koka_binary(
+    name = "peg_test_bin",
+    main = "peg_test.kk",
+    srcs = ["peg_test.kk"],
+    deps = [":peg_lib"],
+)
+
+sh_test(
+    name = "peg_test",
+    srcs = ["run_peg_test.sh"],
+    data = [":peg_test_bin"],
+    timeout = "short",
+)
+
+# reduce.sh is the shared delta-debugging driver behind //eN:reduce_eN.
+exports_files(["reduce.sh", "minimal.peg"])

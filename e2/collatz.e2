@@ -1,0 +1,13 @@
+// Collatz iteration in e2
+// Usage: ./e2peg e2/collatz.e2 <n>
+
+n := arg1
+
+loop {
+  print n
+  case {
+    n == 1      -> break
+    n % 2 == 0  -> n := n / 2
+    1           -> n := 3 * n + 1
+  }
+}
